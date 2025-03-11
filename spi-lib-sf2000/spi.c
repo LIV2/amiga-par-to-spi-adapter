@@ -19,8 +19,10 @@ struct SF2000SDRegisters
 {
     volatile UWORD clock_divisor;
     volatile UWORD slave_select;
+    // The read-only register card_detect is reused
+    // as a write-only register for mode and rx_length.
     volatile UWORD card_detect;
-    volatile UWORD shift_active;
+    volatile UWORD status;
     volatile UWORD shift_reg;
     volatile UWORD int_req;
     volatile UWORD int_ena;
@@ -29,8 +31,18 @@ struct SF2000SDRegisters
 
 static struct SF2000SDRegisters *regs;
 
+#define CLK_DIV_25M     1
 #define CLK_DIV_16M     2
 #define CLK_DIV_400K    124
+
+#define MODE_STOP       0
+#define MODE_RX         1
+#define MODE_TX         2
+#define MODE_BOTH       3
+
+#define STATUS_IN_FULL      0x0004
+#define STATUS_OUT_FULL     0x0002
+#define STATUS_BUSY         0x0001
 
 #define IRQ_CD_CHANGED  1
 
@@ -75,22 +87,28 @@ void spi_set_speed(long speed)
 
 void spi_read(__reg("a0") UBYTE *buf, __reg("d0") ULONG size)
 {
+    regs->card_detect = (UWORD)((MODE_RX << 14) | (size & 0x1fff));
+
     for (int i = size - 1; i >= 0; i--)
     {
-        regs->shift_reg = 0xff;
-        while (regs->shift_active) {
+        while ((regs->status & STATUS_OUT_FULL) == 0) {
         }
-        *buf++ = (UBYTE)(regs->shift_reg);
+        UWORD tmp = regs->shift_reg;
+        *buf++ = (UBYTE)tmp;
     }
 }
 
 void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") ULONG size)
 {
+    regs->card_detect = (UWORD)(MODE_TX << 14);
+
     for (int i = size - 1; i >= 0; i--)
     {
         regs->shift_reg = *buf++;
-        while (regs->shift_active) {
+        while (regs->status & STATUS_IN_FULL) {
         }
+    }
+    while (regs->status & STATUS_BUSY) {
     }
 }
 

@@ -24,6 +24,7 @@
 #include "version.h"
 #include "sd.h"
 #include "spi.h"
+#include "mounter.h"
 
 #define TASK_STACK_SIZE 2048
 #define TASK_PRIORITY 10
@@ -44,7 +45,7 @@
 
 struct ExecBase *SysBase;
 static BPTR saved_seg_list;
-static struct timerequest tr;
+static struct TimeRequest tr;
 static struct Task *task;
 static struct MsgPort mp;
 static struct MsgPort timer_mp;
@@ -420,10 +421,33 @@ static ULONG device_vectors[] =
     -1,
 };
 
-ULONG auto_init_tables[] =
-{
-    sizeof(struct Library),
-    (ULONG)device_vectors,
-    0,
-    (ULONG)init_device,
-};
+/**
+ * init
+ * 
+ * Make the Device, add it and then call mounter
+ * 
+ * Since Mounter uses OpenDevice() we cannot use RTF_AUTOINIT
+ */
+struct Library *init(__reg("a0") BPTR seglist) {
+    struct ExecBase *SysBase = *(struct ExecBase **)4UL;
+    struct Library *mydev = MakeLibrary((ULONG *)&device_vectors,
+                                        NULL,
+                                        (APTR)init_device,
+                                        sizeof(struct Library),
+                                        seglist);
+
+    if (mydev) {
+        AddDevice(mydev);
+        struct MountStruct ms = {
+            .deviceName  = mydev->lib_Node.ln_Name,
+            .creatorName = NULL,
+            .numUnits    = 1,
+            .SysBase     = SysBase,
+            // .configDev   = FIXME
+        };
+
+        MountDrive(&ms);
+
+    }
+    return mydev;
+}

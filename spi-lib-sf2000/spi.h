@@ -15,7 +15,7 @@ void spi_shutdown();
 void spi_set_speed(long speed);
 void spi_select();
 void spi_deselect();
-void spi_read(__reg("a0") unsigned char *buf, __reg("d0") unsigned long size);
-void spi_write(__reg("a0") const unsigned char *buf, __reg("d0") unsigned long size);
+void spi_read(__reg("a0") unsigned char *buf, __reg("d0") short size);
+void spi_write(__reg("a0") const unsigned char *buf, __reg("d0") short size);
 
 #endif

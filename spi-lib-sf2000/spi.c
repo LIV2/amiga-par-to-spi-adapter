@@ -31,6 +31,7 @@ struct SF2000SDRegisters
 
 static struct SF2000SDRegisters *regs;
 
+#define CLK_DIV_50M     0
 #define CLK_DIV_25M     1
 #define CLK_DIV_16M     2
 #define CLK_DIV_400K    124
@@ -40,7 +41,11 @@ static struct SF2000SDRegisters *regs;
 #define MODE_TX         2
 #define MODE_BOTH       3
 
-#define STATUS_IN_FULL      0x0004
+#define STATUS_IN_FULL      0x0040
+#define STATUS_IN1_FULL     0x0020
+#define STATUS_IN0_FULL     0x0010
+#define STATUS_OUT1_FULL    0x0008
+#define STATUS_OUT0_FULL    0x0004
 #define STATUS_OUT_FULL     0x0002
 #define STATUS_BUSY         0x0001
 
@@ -82,33 +87,73 @@ int spi_get_card_present()
 
 void spi_set_speed(long speed)
 {
-    regs->clock_divisor = speed == SPI_SPEED_FAST ? CLK_DIV_16M : CLK_DIV_400K;
+    regs->clock_divisor = speed == SPI_SPEED_FAST ? CLK_DIV_25M : CLK_DIV_400K;
 }
 
-void spi_read(__reg("a0") UBYTE *buf, __reg("d0") ULONG size)
+void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
 {
+    volatile UWORD *word_access = (volatile UWORD *)&(regs->shift_reg);
+    volatile UBYTE *byte_access = (volatile UBYTE *)word_access;
+
     regs->card_detect = (UWORD)((MODE_RX << 14) | (size & 0x1fff));
 
-    for (int i = size - 1; i >= 0; i--)
+    if (((ULONG)buf) & 1)
     {
-        while ((regs->status & STATUS_OUT_FULL) == 0) {
+        while ((regs->status & STATUS_OUT1_FULL) == 0) {
         }
-        UWORD tmp = regs->shift_reg;
-        *buf++ = (UBYTE)tmp;
+        *buf++ = *byte_access;
+        size -= 1;
+    }
+
+    UWORD *buf_word = (UWORD *)buf;
+
+    for (WORD i = (size >> 1) - 1; i >= 0; i--)
+    {
+        while ((regs->status & (STATUS_OUT1_FULL | STATUS_OUT0_FULL)) != (STATUS_OUT1_FULL | STATUS_OUT0_FULL)) {
+        }
+        *buf_word++ = *word_access;
+    }
+
+    if (size & 1)
+    {
+        buf = (UBYTE *)buf_word;
+        while ((regs->status & STATUS_OUT1_FULL) == 0) {
+        }
+        *buf++ = *byte_access;
     }
 }
 
-void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") ULONG size)
+void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
 {
+    volatile UWORD *word_access = (volatile UWORD *)&(regs->shift_reg);
+    volatile UBYTE *byte_access = (volatile UBYTE *)word_access;
+
     regs->card_detect = (UWORD)(MODE_TX << 14);
 
-    for (int i = size - 1; i >= 0; i--)
+    if (((ULONG)buf) & 1)
     {
-        regs->shift_reg = *buf++;
-        while (regs->status & STATUS_IN_FULL) {
-        }
+        *byte_access = *buf++;
+        size -= 1;
     }
-    while (regs->status & STATUS_BUSY) {
+
+    const UWORD *buf_word = (const UWORD *)buf;
+
+    for (WORD i = (size >> 1) - 1; i >= 0; i--)
+    {
+        while ((regs->status & (STATUS_IN1_FULL | STATUS_IN0_FULL)) != 0) {
+        }
+        *word_access = *buf_word++;
+    }
+
+    if (size & 1)
+    {
+        buf = (const UBYTE *)buf_word;
+        while ((regs->status & STATUS_IN0_FULL) != 0) {
+        }
+        *byte_access = *buf++;
+    }
+
+    while (regs->status & (STATUS_IN_FULL | STATUS_IN1_FULL | STATUS_IN0_FULL | STATUS_BUSY)) {
     }
 }
 

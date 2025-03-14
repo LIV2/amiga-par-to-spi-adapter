@@ -41,13 +41,13 @@ static struct SF2000SDRegisters *regs;
 #define MODE_TX         2
 #define MODE_BOTH       3
 
-#define STATUS_IN_FULL      0x0040
-#define STATUS_IN1_FULL     0x0020
-#define STATUS_IN0_FULL     0x0010
-#define STATUS_OUT1_FULL    0x0008
-#define STATUS_OUT0_FULL    0x0004
-#define STATUS_OUT_FULL     0x0002
-#define STATUS_BUSY         0x0001
+#define STATUS_SHIFTER_BUSY     0x0040
+#define STATUS_TX_HALF_EMPTY    0x0020
+#define STATUS_RX_HALF_FULL     0x0010
+#define STATUS_TX_CB_FULL       0x0008
+#define STATUS_TX_CB_EMPTY      0x0004
+#define STATUS_RX_CB_FULL       0x0002
+#define STATUS_RX_CB_EMPTY      0x0001
 
 #define IRQ_CD_CHANGED  1
 
@@ -99,7 +99,7 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
 
     if (((ULONG)buf) & 1)
     {
-        while ((regs->status & STATUS_OUT1_FULL) == 0) {
+        while ((regs->status & STATUS_RX_CB_EMPTY) != 0) {
         }
         *buf++ = *byte_access;
         size -= 1;
@@ -107,9 +107,26 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
 
     UWORD *buf_word = (UWORD *)buf;
 
+    WORD chunk_count = size >> 4;
+    size -= chunk_count << 4;
+
+    for (WORD i = chunk_count - 1; i >= 0; i--)
+    {
+        while ((regs->status & STATUS_RX_HALF_FULL) == 0) {
+        }
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+        *buf_word++ = *word_access;
+    }
+
     for (WORD i = (size >> 1) - 1; i >= 0; i--)
     {
-        while ((regs->status & (STATUS_OUT1_FULL | STATUS_OUT0_FULL)) != (STATUS_OUT1_FULL | STATUS_OUT0_FULL)) {
+        while ((regs->status & STATUS_RX_CB_FULL) == 0) {
         }
         *buf_word++ = *word_access;
     }
@@ -117,7 +134,7 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
     if (size & 1)
     {
         buf = (UBYTE *)buf_word;
-        while ((regs->status & STATUS_OUT1_FULL) == 0) {
+        while ((regs->status & STATUS_RX_CB_EMPTY) != 0) {
         }
         *buf++ = *byte_access;
     }
@@ -138,9 +155,26 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
 
     const UWORD *buf_word = (const UWORD *)buf;
 
+    WORD chunk_count = size >> 4;
+    size -= chunk_count << 4;
+
+    for (WORD i = chunk_count - 1; i >= 0; i--)
+    {
+        while ((regs->status & STATUS_TX_HALF_EMPTY) == 0) {
+        }
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+        *word_access = *buf_word++;
+    }
+
     for (WORD i = (size >> 1) - 1; i >= 0; i--)
     {
-        while ((regs->status & (STATUS_IN1_FULL | STATUS_IN0_FULL)) != 0) {
+        while ((regs->status & STATUS_TX_CB_EMPTY) == 0) {
         }
         *word_access = *buf_word++;
     }
@@ -148,12 +182,12 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
     if (size & 1)
     {
         buf = (const UBYTE *)buf_word;
-        while ((regs->status & STATUS_IN0_FULL) != 0) {
+        while ((regs->status & STATUS_TX_CB_FULL) != 0) {
         }
         *byte_access = *buf++;
     }
 
-    while (regs->status & (STATUS_IN_FULL | STATUS_IN1_FULL | STATUS_IN0_FULL | STATUS_BUSY)) {
+    while (regs->status & STATUS_SHIFTER_BUSY) {
     }
 }
 

@@ -19,14 +19,13 @@ struct SF2000SDRegisters
 {
     volatile UWORD clock_divisor;
     volatile UWORD slave_select;
-    // The read-only register card_detect is reused
-    // as a write-only register for mode and rx_length.
     volatile UWORD card_detect;
     volatile UWORD status;
-    volatile UWORD shift_reg;
+    volatile UWORD shift_ctrl;
     volatile UWORD int_req;
     volatile UWORD int_ena;
     volatile UWORD int_act;
+    volatile UWORD fifo;
 };
 
 static struct SF2000SDRegisters *regs;
@@ -92,10 +91,10 @@ void spi_set_speed(long speed)
 
 void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
 {
-    volatile UWORD *word_access = (volatile UWORD *)&(regs->shift_reg);
+    volatile UWORD *word_access = (volatile UWORD *)&(regs->fifo);
     volatile UBYTE *byte_access = (volatile UBYTE *)word_access;
 
-    regs->card_detect = (UWORD)((MODE_RX << 14) | (size & 0x1fff));
+    regs->shift_ctrl = (UWORD)((MODE_RX << 14) | (size & 0x1fff));
 
     if (((ULONG)buf) & 1)
     {
@@ -105,24 +104,29 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
         size -= 1;
     }
 
-    UWORD *buf_word = (UWORD *)buf;
-
     WORD chunk_count = size >> 4;
-    size -= chunk_count << 4;
 
-    for (WORD i = chunk_count - 1; i >= 0; i--)
+    if (chunk_count)
     {
-        while ((regs->status & STATUS_RX_HALF_FULL) == 0) {
+        size -= chunk_count << 4;
+
+        ULONG *buf_longword = (ULONG *)buf;
+        volatile ULONG *longword_access = (volatile ULONG *)word_access;
+
+        for (WORD i = chunk_count - 1; i >= 0; i--)
+        {
+            while ((regs->status & STATUS_RX_HALF_FULL) == 0) {
+            }
+            *buf_longword++ = *longword_access;
+            *buf_longword++ = *longword_access;
+            *buf_longword++ = *longword_access;
+            *buf_longword++ = *longword_access;
         }
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
-        *buf_word++ = *word_access;
+
+        buf = (UBYTE *)buf_longword;
     }
+
+    UWORD *buf_word = (UWORD *)buf;
 
     for (WORD i = (size >> 1) - 1; i >= 0; i--)
     {
@@ -142,10 +146,10 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
 
 void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
 {
-    volatile UWORD *word_access = (volatile UWORD *)&(regs->shift_reg);
+    volatile UWORD *word_access = (volatile UWORD *)&(regs->fifo);
     volatile UBYTE *byte_access = (volatile UBYTE *)word_access;
 
-    regs->card_detect = (UWORD)(MODE_TX << 14);
+    regs->shift_ctrl = (UWORD)(MODE_TX << 14);
 
     if (((ULONG)buf) & 1)
     {
@@ -153,24 +157,29 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
         size -= 1;
     }
 
-    const UWORD *buf_word = (const UWORD *)buf;
-
     WORD chunk_count = size >> 4;
-    size -= chunk_count << 4;
 
-    for (WORD i = chunk_count - 1; i >= 0; i--)
+    if (chunk_count)
     {
-        while ((regs->status & STATUS_TX_HALF_EMPTY) == 0) {
+        size -= chunk_count << 4;
+
+        const ULONG *buf_longword = (const ULONG *)buf;
+        volatile ULONG *longword_access = (volatile ULONG *)word_access;
+
+        for (WORD i = chunk_count - 1; i >= 0; i--)
+        {
+            while ((regs->status & STATUS_TX_HALF_EMPTY) == 0) {
+            }
+            *longword_access = *buf_longword++;
+            *longword_access = *buf_longword++;
+            *longword_access = *buf_longword++;
+            *longword_access = *buf_longword++;
         }
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
-        *word_access = *buf_word++;
+
+        buf = (const UBYTE *)buf_longword;
     }
+
+    const UWORD *buf_word = (const UWORD *)buf;
 
     for (WORD i = (size >> 1) - 1; i >= 0; i--)
     {

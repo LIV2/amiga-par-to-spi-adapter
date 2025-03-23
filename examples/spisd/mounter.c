@@ -249,7 +249,7 @@ static UWORD checksum(UBYTE *buf, struct MountData *md)
 		chk += v;
 	}
 	if (chk) {
-		dbg("Checksum error %08"PRIx32"\n", chk);
+		//dbg("Checksum error %08"PRIx32"\n", chk);
 		return FALSE;
 	}
 	return TRUE;
@@ -273,13 +273,13 @@ static BOOL readblock(UBYTE *buf, ULONG block, ULONG id, struct MountData *md)
 		if (!err) {
 			break;
 		}
-		dbg("Read block %"PRIu32" error %"PRId32"\n", block, err);
+		//dbg("Read block %"PRIu32" error %"PRId32"\n", block, err);
 	}
 	if (i == MAX_RETRIES) {
 		return FALSE;
 	}
 	ULONG v = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | (buf[3] << 0);
-	dbg("Read block %"PRIu32" %08"PRIx32"\n", block, v);
+	//dbg("Read block %"PRIu32" %08"PRIx32"\n", block, v);
 	if (id != 0xffffffff) {
 		if (v != id) {
 			return FALSE;
@@ -294,7 +294,7 @@ static BOOL readblock(UBYTE *buf, ULONG block, ULONG id, struct MountData *md)
 // Read multiple longs from LSEG blocks
 static BOOL lseg_read_longs(struct MountData *md, ULONG longs, ULONG *data)
 {
-	dbg("lseg_read_longs, longs %"PRId32"  ptr %p, remaining %"PRId32"\n", longs, data, md->lseglongs);
+	//dbg("lseg_read_longs, longs %"PRId32"  ptr %p, remaining %"PRId32"\n", longs, data, md->lseglongs);
 	ULONG cnt = 0;
 	md->lseghasword = FALSE;
 	while (longs > cnt) {
@@ -309,7 +309,7 @@ static BOOL lseg_read_longs(struct MountData *md, ULONG longs, ULONG *data)
 		}
 		if (!md->lseglongs) {
 			if (md->lsegblock == 0xffffffff) {
-				dbg("lseg_read_long premature end!\n");
+				//dbg("lseg_read_long premature end!\n");
 				return FALSE;
 			}
 			if (!readblock((UBYTE*)md->lsegbuf, md->lsegblock, IDNAME_LOADSEG, md)) {
@@ -317,7 +317,7 @@ static BOOL lseg_read_longs(struct MountData *md, ULONG longs, ULONG *data)
 			}
 			md->lseglongs = LSEG_DATASIZE;
 			md->lsegoffset = 0;
-			dbg("lseg_read_long lseg block %"PRId32" loaded, next %"PRId32"\n", md->lsegblock, md->lsegbuf->lsb_Next);
+			//dbg("lseg_read_long lseg block %"PRId32" loaded, next %"PRId32"\n", md->lsegblock, md->lsegbuf->lsb_Next);
 			md->lsegblock = md->lsegbuf->lsb_Next;
 		}
 	}
@@ -336,7 +336,7 @@ static BOOL lseg_read_long(struct MountData *md, ULONG *data)
 	} else {
 		v = lseg_read_longs(md, 1, data);
 	}
-	dbg("lseg_read_long %08"PRIx32"\n", *data);
+	//dbg("lseg_read_long %08"PRIx32"\n", *data);
 	return v;
 }
 // Read single word from LSEG blocks
@@ -346,7 +346,7 @@ static BOOL lseg_read_word(struct MountData *md, ULONG *data)
 	if (md->lseghasword) {
 		*data = md->lsegwordbuf;
 		md->lseghasword = FALSE;
-		dbg("lseg_read_word 2/2 %08"PRIx32"\n", *data);
+		//dbg("lseg_read_word 2/2 %08"PRIx32"\n", *data);
 		return TRUE;
 	}
 	ULONG temp;
@@ -356,7 +356,7 @@ static BOOL lseg_read_word(struct MountData *md, ULONG *data)
 		md->lsegwordbuf = (UWORD)temp;
 		*data = temp >> 16;
 	}
-	dbg("lseg_read_word 1/2 %08"PRIx32"\n", *data);
+	//dbg("lseg_read_word 1/2 %08"PRIx32"\n", *data);
 	return v;
 }
 
@@ -408,7 +408,7 @@ static APTR fsrelocate(struct MountData *md)
 		return NULL;
 	}
 	totalHunks = lastHunk - firstHunk + 1;
-	dbg("first hunk %"PRId32", last hunk %"PRId32"\n", firstHunk, lastHunk);
+	//dbg("first hunk %"PRId32", last hunk %"PRId32"\n", firstHunk, lastHunk);
 	relocHunks = AllocMem(totalHunks * sizeof(struct RelocHunk), MEMF_CLEAR);
 	if (!relocHunks) {
 		return NULL;
@@ -437,7 +437,7 @@ static APTR fsrelocate(struct MountData *md)
 		if (!rh->hunkData) {
 			goto end;
 		}
-		dbg("hunk %"PRId32": ptr %p, size %"PRId32", memory flags %08"PRIx32"\n", hunkCnt + firstHunk, rh->hunkData, hunkHeadSize, memoryFlags);
+		//dbg("hunk %"PRId32": ptr %p, size %"PRId32", memory flags %08"PRIx32"\n", hunkCnt + firstHunk, rh->hunkData, hunkHeadSize, memoryFlags);
 		rh->hunkData[0] = rh->hunkSize + 2;
 		rh->hunkData[1] = MKBADDR(prevChunk);
 		prevChunk = &rh->hunkData[1];
@@ -448,7 +448,7 @@ static APTR fsrelocate(struct MountData *md)
 		}
 		hunkCnt++;
 	}
-	dbg("hunks allocated\n");
+	//dbg("hunks allocated\n");
 
 	// Load hunks/relocate
 	hunkCnt = 0;
@@ -461,7 +461,7 @@ static APTR fsrelocate(struct MountData *md)
 			}
 			goto end;
 		}
-		dbg("HUNK %08"PRIx32"\n", hunkType);
+		//dbg("HUNK %08"PRIx32"\n", hunkType);
 		switch(hunkType)
 		{
 			case HUNK_CODE:
@@ -507,7 +507,7 @@ static APTR fsrelocate(struct MountData *md)
 					if (relocHunk >= totalHunks) {
 						goto end;
 					}
-					dbg("HUNK_RELOC32: relocs %"PRId32" hunk %"PRId32"\n", relocCnt, relocHunk + firstHunk);
+					//dbg("HUNK_RELOC32: relocs %"PRId32" hunk %"PRId32"\n", relocCnt, relocHunk + firstHunk);
 					struct RelocHunk *rhr = &relocHunks[relocHunk];
 					while (relocCnt != 0) {
 						ULONG relocOffset;
@@ -548,7 +548,7 @@ static APTR fsrelocate(struct MountData *md)
 			}
 			break;
 			default:
-			dbg("Unexpected HUNK!\n");
+			//dbg("Unexpected HUNK!\n");
 			goto end;
 		}
 	}
@@ -556,7 +556,7 @@ static APTR fsrelocate(struct MountData *md)
 
 end:
 	if (!ret) {
-		dbg("reloc failed\n");
+		//dbg("reloc failed\n");
 		hunkCnt = 0;
 		while (hunkCnt < totalHunks) {
 			struct RelocHunk *rh = &relocHunks[hunkCnt];
@@ -568,7 +568,7 @@ end:
 		firstProcessedHunk = NULL;
 	} else {
 		cacheclear(md);
-		dbg("reloc ok, first hunk %p\n", firstProcessedHunk);
+		//dbg("reloc ok, first hunk %p\n", firstProcessedHunk);
 	}
 
 	FreeMem(relocHunks, totalHunks * sizeof(struct RelocHunk));
@@ -606,7 +606,7 @@ static struct FileSysEntry *FSHDProcess(struct FileSysHeaderBlock *fshb, ULONG d
 			fsr->fsr_Creator = CreatorStr;
 			AddTail(&SysBase->ResourceList, &fsr->fsr_Node);
 		}
-		dbg("FileSystem.resource created %p\n", fsr);
+		//dbg("FileSystem.resource created %p\n", fsr);
 	}
 	if (fsr) {
 		for (fse = (struct FileSysEntry*)fsr->fsr_FileSysEntries.lh_Head;
@@ -617,7 +617,7 @@ static struct FileSysEntry *FSHDProcess(struct FileSysHeaderBlock *fshb, ULONG d
 				if (fse->fse_Version >= version) {
 					// FileSystem.resource filesystem is same or newer, don't update
 					if (newOnly) {
-						dbg("FileSystem.resource scan: %p dostype %08"PRIx32" found, FSRES version %08"PRIx32" >= FSHD version %08"PRIx32"\n", fse, dostype, fse->fse_Version, version);
+						//dbg("FileSystem.resource scan: %p dostype %08"PRIx32" found, FSRES version %08"PRIx32" >= FSHD version %08"PRIx32"\n", fse, dostype, fse->fse_Version, version);
 						fse = NULL;
 					}
 					goto end;
@@ -648,7 +648,7 @@ static struct FileSysEntry *FSHDProcess(struct FileSysHeaderBlock *fshb, ULONG d
 				strcpy((UBYTE*)(fse + 1), creator);
 				fse->fse_Node.ln_Name = (UBYTE*)(fse + 1);
 			}
-			dbg("FileSystem.resource scan: dostype %08"PRIx32" not found or old version: created new\n", dostype);
+			//dbg("FileSystem.resource scan: dostype %08"PRIx32" not found or old version: created new\n", dostype);
 		}
 	}
 end:
@@ -663,13 +663,13 @@ static void FSHDAdd(struct FileSysEntry *fse, struct MountData *md)
 		struct FileSysResource *fsr = OpenResource(FSRNAME);
 		if (fsr) {
 			AddHead(&fsr->fsr_FileSysEntries, &fse->fse_Node);
-			dbg("FileSysEntry %p added to FileSystem.resource, dostype %08"PRIx32"\n", fse, fse->fse_DosType);
+			//dbg("FileSysEntry %p added to FileSystem.resource, dostype %08"PRIx32"\n", fse, fse->fse_DosType);
 			fse = NULL;
 		}
 		Permit();
 	}
 	if (fse) {
-		dbg("FileSysEntry %p freed, dostype %08"PRIx32"\n", fse, fse->fse_DosType);
+		//dbg("FileSysEntry %p freed, dostype %08"PRIx32"\n", fse, fse->fse_DosType);
 		FreeMem(fse, sizeof(struct FileSysEntry));
 	}
 }
@@ -687,9 +687,9 @@ static struct FileSysEntry *ParseFSHD(UBYTE *buf, ULONG block, ULONG dostype, st
 		if (!readblock(buf, block, IDNAME_FILESYSHEADER, md)) {
 			break;
 		}
-		dbg("FSHD found, block %"PRIu32", dostype %08"PRIx32", looking for dostype %08"PRIx32"\n", block, fshb->fhb_DosType, dostype);
+		//dbg("FSHD found, block %"PRIu32", dostype %08"PRIx32", looking for dostype %08"PRIx32"\n", block, fshb->fhb_DosType, dostype);
 		if (fshb->fhb_DosType == dostype) {
-			dbg("FSHD dostype match found\n");
+			//dbg("FSHD dostype match found\n");
 			fse = FSHDProcess(fshb, dostype, fshb->fhb_Version, TRUE, md);
 			if (fse) {
 				md->lsegblock = fshb->fhb_SegListBlocks;
@@ -812,7 +812,7 @@ static void CheckAndFixDevName(struct MountData *md, UBYTE *bname)
 		if (CompareBSTRNoCase(bname, bname2)) {
 			UBYTE len = bname[0] > 30 ? 30 : bname[0];
 			UBYTE *name = bname + 1;
-			dbg("Duplicate device name '%s'\n", name);
+			//dbg("Duplicate device name '%s'\n", name);
 			if (len > 2 && name[len - 2] == '.' && name[len - 1] >= '0' && name[len - 1] < '9') {
 				// if already ends to .<digit>: increase digit by one
 				name[len - 1]++;
@@ -823,7 +823,7 @@ static void CheckAndFixDevName(struct MountData *md, UBYTE *bname)
 				name[len] = 0;
 				bname[0] += 2;
 			}
-			dbg("-> new device name '%s'\n", name);
+			//dbg("-> new device name '%s'\n", name);
 			// retry
 			bn = (struct BootNode*)md->ExpansionBase->MountList.lh_Head;
 			continue;
@@ -840,16 +840,16 @@ static void AddNode(struct PartitionBlock *part, struct ParameterPacket *pp, str
 	if (ExpansionBase->LibNode.lib_Version >= 37) {
 		// KS 2.0+
 		if (!md->DOSBase && bootPri > -128) {
-			dbg("KS20+ Mounting as bootable: pri %08"PRIx32"\n", bootPri);
+			//dbg("KS20+ Mounting as bootable: pri %08"PRIx32"\n", bootPri);
 			AddBootNode(bootPri, ADNF_STARTPROC, dn, md->configDev);
 		} else {
-			dbg("KS20+: Mounting as non-bootable\n");
+			//dbg("KS20+: Mounting as non-bootable\n");
 			AddDosNode(bootPri, ADNF_STARTPROC, dn);
 		}
 	} else {
 		// KS 1.3
 		if (!md->DOSBase && bootPri > -128) {
-			dbg("KS13 Mounting as bootable: pri %08"PRIx32"\n", bootPri);
+			//dbg("KS13 Mounting as bootable: pri %08"PRIx32"\n", bootPri);
 			// Create and insert bootnode manually.
 			struct BootNode *bn = AllocMem(sizeof(struct BootNode), MEMF_CLEAR | MEMF_PUBLIC);
 			if (bn) {
@@ -862,7 +862,7 @@ static void AddNode(struct PartitionBlock *part, struct ParameterPacket *pp, str
 				Permit();
 			}
 		} else {
-			dbg("KS13: Mounting as non-bootable\n");
+			//dbg("KS13: Mounting as non-bootable\n");
 			AddDosNode(bootPri, 0, dn);
 			if (md->DOSBase) {
 				// KS 1.3 ADNF_STARTPROC is not supported
@@ -871,7 +871,7 @@ static void AddNode(struct PartitionBlock *part, struct ParameterPacket *pp, str
 				name[len++] = ':';
 				name[len] = 0;
 				void *mp = DeviceProc(name);
-				dbg("DeviceProc() returned %p\n", mp);
+				//dbg("DeviceProc() returned %p\n", mp);
 			}
 		}
 	}
@@ -887,7 +887,7 @@ static ULONG ParsePART(UBYTE *buf, ULONG block, ULONG filesysblock, struct Mount
 	if (!readblock(buf, block, IDNAME_PARTITION, md)) {
 		return nextpartblock;
 	}
-	dbg("PART found, block %"PRIu32"\n", block);
+	//dbg("PART found, block %"PRIu32"\n", block);
 	nextpartblock = part->pb_Next;
 	if (!(part->pb_Flags & PBFF_NOMOUNT)) {
 		struct ParameterPacket *pp = AllocMem(sizeof(struct ParameterPacket), MEMF_PUBLIC | MEMF_CLEAR);
@@ -900,7 +900,7 @@ static ULONG ParsePART(UBYTE *buf, ULONG block, ULONG filesysblock, struct Mount
 			pp->dosname = part->pb_DriveName + 1;
 			len=(*part->pb_DriveName) > 30 ? 30 : (*part->pb_DriveName);
 			part->pb_DriveName[len + 1] = 0;
-			dbg("PART '%s'\n", pp->dosname);
+			//dbg("PART '%s'\n", pp->dosname);
 			CheckAndFixDevName(md, part->pb_DriveName);
 			struct DeviceNode *dn = MakeDosNode(pp);
 			if (dn) {
@@ -917,7 +917,7 @@ static ULONG ParsePART(UBYTE *buf, ULONG block, ULONG filesysblock, struct Mount
 						srcPatch++;
 						dstPatch++;
 					}
-					dbg("Mounting partition\n");
+					//dbg("Mounting partition\n");
 #if NO_CONFIGDEV
 					if (!md->configDev && !md->DOSBase) {
 						CreateFakeConfigDev(md);
@@ -927,7 +927,7 @@ static ULONG ParsePART(UBYTE *buf, ULONG block, ULONG filesysblock, struct Mount
 				AddNode(part, pp, dn, part->pb_DriveName + 1, md);
 				md->ret++;
 			} else {
-				dbg("Device node creation failed\n");
+				//dbg("Device node creation failed\n");
 			}
 			FreeMem(pp, sizeof(struct ParameterPacket));
 		}
@@ -960,7 +960,7 @@ static LONG ScanRDSK(struct MountData *md)
 		if (readblock(md->buf, i, 0xffffffff, md)) {
 			struct RigidDiskBlock *rdb = (struct RigidDiskBlock*)md->buf;
 			if (rdb->rdb_ID == IDNAME_RIGIDDISK) {
-				dbg("RDB found, block %"PRIu32"\n", i);
+				//dbg("RDB found, block %"PRIu32"\n", i);
 				ret = ParseRDSK(md->buf, md);
 				break;
 			}
@@ -985,10 +985,10 @@ static struct FileSysEntry *scan_filesystems(void)
 	 * Permit, then print the info.
 	 */
 	if (!(FileSysResBase = (struct FileSysResource *)OpenResource(FSRNAME))) {
-		dbg("Cannot open %s\n",FSRNAME);
+		//dbg("Cannot open %s\n",FSRNAME);
 	} else {
-		dbg("DosType   Version   Creator\n");
-		dbg("------------------------------------------------\n");
+		//dbg("DosType   Version   Creator\n");
+		//dbg("------------------------------------------------\n");
 		for ( fse = (struct FileSysEntry *)FileSysResBase->fsr_FileSysEntries.lh_Head;
 			  fse->fse_Node.ln_Succ;
 			  fse = (struct FileSysEntry *)fse->fse_Node.ln_Succ) {
@@ -1001,9 +1001,9 @@ static struct FileSysEntry *scan_filesystems(void)
 							? (fse->fse_DosType & 0xFF) + 0x30
 							: (fse->fse_DosType & 0xFF));
 #endif
-			dbg("	  %s%d",(fse->fse_Version >> 16)<10 ? " " : "", (fse->fse_Version >> 16));
-			dbg(".%d%s",(fse->fse_Version & 0xFFFF), (fse->fse_Version & 0xFFFF)<10 ? " " : "");
-			dbg("	 %s",fse->fse_Node.ln_Name);
+			//dbg("	  %s%d",(fse->fse_Version >> 16)<10 ? " " : "", (fse->fse_Version >> 16));
+			//dbg(".%d%s",(fse->fse_Version & 0xFFFF), (fse->fse_Version & 0xFFFF)<10 ? " " : "");
+			//dbg("	 %s",fse->fse_Node.ln_Name);
 
 			if (fse->fse_DosType==0x43443031) {
 				cdfs=fse;
@@ -1113,7 +1113,7 @@ LONG MountDrive(struct MountStruct *ms)
 	struct IOExtTD *request = NULL;
 	struct DriveGeometry geom;
 
-	dbg("Starting..\n");
+	//dbg("Starting..\n");
 	ExpansionBase = (struct ExpansionBase*)OpenLibrary("expansion.library", 34);
 	if (ExpansionBase) {
 		struct MountData *md = AllocMem(sizeof(struct MountData), MEMF_CLEAR | MEMF_PUBLIC);
@@ -1127,7 +1127,7 @@ LONG MountDrive(struct MountStruct *ms)
 			if(port) {
 				request = (struct IOExtTD*)W_CreateIORequest(port, sizeof(struct IOExtTD), SysBase);
 				if(request) {
-					dbg("OpenDevice('%s', %"PRId32", %p, 0)\n", ms->deviceName, unitNum, request);
+					//dbg("OpenDevice('%s', %"PRId32", %p, 0)\n", ms->deviceName, unitNum, request);
 					UBYTE err = OpenDevice(ms->deviceName, unitNum, (struct IORequest*)request, 0);
 					if (err == 0) {
 						if ((err = GetGeometry(request,&geom)) == 0) {
@@ -1142,10 +1142,10 @@ LONG MountDrive(struct MountStruct *ms)
 							ret = ScanRDSK(md);
 							CloseDevice((struct IORequest*)request);
 						} else {
-							dbg("Couldn't get block size\n");
+							//dbg("Couldn't get block size\n");
 						}
 					} else {
-						dbg("OpenDevice(%s,%"PRId32") failed: %"PRId32"\n", ms->deviceName, unitNum, (BYTE)err);
+						//dbg("OpenDevice(%s,%"PRId32") failed: %"PRId32"\n", ms->deviceName, unitNum, (BYTE)err);
 					}
 					W_DeleteIORequest(request, SysBase);
 				}
@@ -1158,7 +1158,7 @@ LONG MountDrive(struct MountStruct *ms)
 		}
 		CloseLibrary(&ExpansionBase->LibNode);
 	}
-	dbg("Exit code %"PRId32"\n", ret);
+	//dbg("Exit code %"PRId32"\n", ret);
 	return ret;
 }
 #else
@@ -1173,7 +1173,7 @@ LONG MountDrive(struct MountStruct *ms)
 	struct ExecBase *SysBase = ms->SysBase;
 	struct DriveGeometry geom;
 
-	dbg("Starting..\n");
+	//dbg("Starting..\n");
 	ExpansionBase = (struct ExpansionBase*)OpenLibrary("expansion.library", 34);
 	if (ExpansionBase) {
 		struct MountData *md = AllocMem(sizeof(struct MountData), MEMF_CLEAR | MEMF_PUBLIC);
@@ -1190,7 +1190,7 @@ LONG MountDrive(struct MountStruct *ms)
 					UWORD unitNumCnt = ms->numUnits;
 					while (unitNumCnt-- > 0) {
 						unit = &ms->Units[uidx++];
-						dbg("OpenDevice('%s', %"PRId32", %p, 0)\n", ms->deviceName, unit->unitNum, request);
+						//dbg("OpenDevice('%s', %"PRId32", %p, 0)\n", ms->deviceName, unit->unitNum, request);
 						UBYTE err = OpenDevice(ms->deviceName, unit->unitNum, (struct IORequest*)request, 0);
 						if (err == 0) {
 							if ((err = GetGeometry(request,&geom)) == 0) {
@@ -1211,15 +1211,15 @@ LONG MountDrive(struct MountStruct *ms)
 
 #ifndef NO_RDBLAST
 								if (md->wasLastDev) {
-									dbg("RDBFF_LAST exit\n");
+									//dbg("RDBFF_LAST exit\n");
 									break;
 								}
 #endif
 							} else {
-								dbg("Couldn't get block size\n");
+								//dbg("Couldn't get block size\n");
 							}
 						} else {
-							dbg("OpenDevice(%s,%"PRId32") failed: %"PRId32"\n", ms->deviceName, unit->unitNum, (BYTE)err);
+							//dbg("OpenDevice(%s,%"PRId32") failed: %"PRId32"\n", ms->deviceName, unit->unitNum, (BYTE)err);
 						}
 					}
 					W_DeleteIORequest(request, SysBase);
@@ -1233,7 +1233,7 @@ LONG MountDrive(struct MountStruct *ms)
 		}
 		CloseLibrary(&ExpansionBase->LibNode);
 	}
-	dbg("Exit code %"PRId32"\n", ret);
+	//dbg("Exit code %"PRId32"\n", ret);
 	return ret;
 }
 #endif

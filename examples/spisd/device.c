@@ -443,7 +443,6 @@ struct Library *init(__reg("a0") BPTR seglist) {
             .creatorName = NULL,
             .numUnits    = 1,
             .SysBase     = SysBase,
-            // .configDev   = FIXME
         };
 
         MountDrive(&ms);

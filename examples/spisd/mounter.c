@@ -55,11 +55,13 @@
 #define dbg
 #endif
 
+#define NO_CONFIGDEV 1
+
 #define MAX_BLOCKSIZE 2048
 #define LSEG_DATASIZE (512 / 4 - 5)
 
 #if NO_CONFIGDEV
-extern UBYTE bootblock, bootblock_end;
+extern UBYTE bootpoint, bootpoint_end;
 #endif
 
 // struct ExecBase *SysBase;
@@ -720,14 +722,14 @@ static void CreateFakeConfigDev(struct MountData *md)
 		configDev->cd_BoardAddr = NULL;
 		configDev->cd_BoardSize = 0;
 		configDev->cd_Rom.er_Type = ERTF_DIAGVALID;
-		ULONG bbSize = &bootblock_end - &bootblock;
+		ULONG bbSize = &bootpoint_end - &bootpoint;
 		ULONG daSize = sizeof(struct DiagArea) + bbSize;
 		struct DiagArea *diagArea = AllocMem(daSize, MEMF_CLEAR | MEMF_PUBLIC);
 		if (diagArea) {
 			diagArea->da_Config = DAC_CONFIGTIME;
 			diagArea->da_BootPoint = sizeof(struct DiagArea);
 			diagArea->da_Size = (UWORD)daSize;
-			copymem(diagArea + 1, &bootblock, bbSize);
+			copymem(diagArea + 1, &bootpoint, bbSize);
 			// cd_Rom.er_Reserved0c is used as a pointer to diagArea by strap
 			ULONG *da_Pointer = (ULONG *)&configDev->cd_Rom.er_Reserved0c;
 			*da_Pointer = (ULONG)diagArea;

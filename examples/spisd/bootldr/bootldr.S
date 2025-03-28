@@ -56,9 +56,11 @@ DiagEntry
         add.l   d0,RT_MATCHTAG(a4)              ; pointer to itself
         add.l   d0,RT_ENDSKIP(a4)
 
-        move.l  #EndCopy-DiagStart,d0           ; Address of spisd.device in ROM
-        lsl.l   #2,d0                           ; Offset * 4 (Nibble-wise DiagArea)
-        add.w   cd_Rom+er_InitDiagVec(a3),d0    ; Add autoconfig rom offset
+        sub.l   d0,d0
+        move.w  cd_Rom+er_InitDiagVec(a3),d0    ; Get autoconfig rom offset
+        move.l  #EndCopy-DiagStart,d1           ; Address of spisd.device in ROM
+        lsl.l   #2,d1                           ; Offset * 4 (Nibble-wise DiagArea)
+        add.l   d1,d0
         
         bsr      _relocate
         tst.l   d0

@@ -176,6 +176,10 @@ static void task_run()
     struct Task *self = FindTask(0);
     struct Task *parent = (struct Task *)self->tc_UserData;
 
+    if ((AllocSignal(SIGB_CARD_CHANGE)) == -1) Alert(0xBADBEEF);
+    if ((AllocSignal(SIGB_OP_REQUEST)) == -1) Alert(0xBADBEEF);
+    if ((AllocSignal(SIGB_TIMER)) == -1) Alert(0xBADBEEF);
+
     init_timer(self);
     init_iomp(self);
 

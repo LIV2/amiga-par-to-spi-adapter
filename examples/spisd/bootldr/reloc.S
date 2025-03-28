@@ -1,7 +1,7 @@
 ; reloc.S
 ; Modified from Open Source A4091.device by Stefan Reinauer and Chris Hooper - https://github.com/A4091/a4091-software
         INCLUDE "exec/memory.i"
-        INCLUDE "lvo/exec_lib.i"
+        ; INCLUDE "lvo/exec_lib.i"
 
         ; IFND ROM
         ; section .text,code

@@ -150,10 +150,39 @@ static void process_request(struct IOStdReq *ior)
     ReplyMsg(&ior->io_Message);
 }
 
+static void init_timer(struct Task *self) {
+    tr.tr_node.io_Message.mn_Node.ln_Type = NT_REPLYMSG;
+    tr.tr_node.io_Message.mn_ReplyPort = &timer_mp;
+    tr.tr_node.io_Message.mn_Length = sizeof(tr);
+
+    timer_mp.mp_Node.ln_Type = NT_MSGPORT;
+    timer_mp.mp_Flags = PA_SIGNAL;
+    timer_mp.mp_SigBit = SIGB_TIMER;
+    timer_mp.mp_SigTask = self;
+
+    NewList(&timer_mp.mp_MsgList);
+}
+
+static void init_iomp(struct Task *self) {
+    mp.mp_Node.ln_Type = NT_MSGPORT;
+    mp.mp_Flags = PA_SIGNAL;
+    mp.mp_SigBit = SIGB_OP_REQUEST;
+    mp.mp_SigTask = self;
+    NewList(&mp.mp_MsgList);
+}
+
 static void task_run()
 {
+    struct Task *self = FindTask(0);
+    struct Task *parent = (struct Task *)self->tc_UserData;
+
+    init_timer(self);
+    init_iomp(self);
+
     if (card_present && sd_open() == 0)
         card_opened = TRUE;
+
+    Signal(parent,SIGF_SINGLE);
 
     while (1)
     {
@@ -317,10 +346,6 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
 
     Forbid();
 
-    tr.tr_node.io_Message.mn_Node.ln_Type = NT_REPLYMSG;
-    tr.tr_node.io_Message.mn_ReplyPort = &timer_mp;
-    tr.tr_node.io_Message.mn_Length = sizeof(tr);
-
     if (OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)&tr, 0))
         goto fail1;
 
@@ -328,25 +353,19 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
     if (!task)
         goto fail2;
 
+    task->tc_UserData = (APTR)FindTask(0);
+
     int res = spi_initialize(&change_isr);
     if (res < 0)
         goto fail3;
 
     card_present = res == 1;
 
-    mp.mp_Node.ln_Type = NT_MSGPORT;
-    mp.mp_Flags = PA_SIGNAL;
-    mp.mp_SigBit = SIGB_OP_REQUEST;
-    mp.mp_SigTask = task;
-    NewList(&mp.mp_MsgList);
-
-    timer_mp.mp_Node.ln_Type = NT_MSGPORT;
-    timer_mp.mp_Flags = PA_SIGNAL;
-    timer_mp.mp_SigBit = SIGB_TIMER;
-    timer_mp.mp_SigTask = task;
-    NewList(&timer_mp.mp_MsgList);
-
+    SetSignal(0,SIGF_SINGLE);
     Permit();
+
+    Wait(SIGF_SINGLE); // Wait for task to be ready
+
     return dev;
 
 fail3:
@@ -437,7 +456,7 @@ struct Library *init(__reg("a0") BPTR seglist) {
                                         seglist);
 
     if (mydev) {
-        AddDevice(mydev);
+        AddDevice((struct Device *)mydev);
         struct MountStruct ms = {
             .deviceName  = mydev->lib_Node.ln_Name,
             .creatorName = NULL,

@@ -21,8 +21,8 @@ const struct Resident romtag =
     .rt_Flags = RTF_COLDSTART,
     .rt_Version = VERSION,
     .rt_Type = NT_DEVICE,
-    .rt_Pri = 0,
+    .rt_Pri = 10,
     .rt_Name = device_name,
     .rt_IdString = id_string,
-    .rt_Init = init,
+    .rt_Init = (APTR)init,
 };

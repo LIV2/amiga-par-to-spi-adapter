@@ -918,11 +918,6 @@ static ULONG ParsePART(UBYTE *buf, ULONG block, ULONG filesysblock, struct Mount
 						dstPatch++;
 					}
 					//dbg("Mounting partition\n");
-#if NO_CONFIGDEV
-					if (!md->configDev && !md->DOSBase) {
-						CreateFakeConfigDev(md);
-					}
-#endif
 				}
 				AddNode(part, pp, dn, part->pb_DriveName + 1, md);
 				md->ret++;
@@ -1136,7 +1131,11 @@ LONG MountDrive(struct MountStruct *ms)
 							md->devicename = ms->deviceName;
 							md->unitnum    = unitNum;
 							md->blocksize  = geom.dg_SectorSize;
-#ifndef NO_CONFIGDEV
+#if NO_CONFIGDEV
+							if (!md->configDev && !md->DOSBase) {
+								CreateFakeConfigDev(md);
+							}
+#else
 							md->configDev  = ms->configDev;
 #endif
 							ret = ScanRDSK(md);

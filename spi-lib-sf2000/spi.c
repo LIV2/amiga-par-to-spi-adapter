@@ -10,7 +10,8 @@
 #include <hardware/intbits.h>
 
 #include <proto/exec.h>
-
+#include <clib/debug_protos.h>
+#include "../examples/spisd/debug.h"
 #include "spi.h"
 
 static const char spi_lib_name[] = "spi-lib-sf2000";
@@ -80,7 +81,7 @@ int spi_get_card_present()
 
     // Re-enable the CD changed interrupt.
     regs->int_ena = IRQ_CD_CHANGED;
-
+    Trace("Card Present: %lx\n",present);
     return present;
 }
 
@@ -91,6 +92,7 @@ void spi_set_speed(long speed)
 
 void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
 {
+    Trace("spi_read() - size: %ld\n",size);
     volatile UWORD *word_access = (volatile UWORD *)&(regs->fifo);
     volatile UBYTE *byte_access = (volatile UBYTE *)word_access;
 
@@ -99,6 +101,7 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
     if (((ULONG)buf) & 1)
     {
         while ((regs->status & STATUS_RX_CB_EMPTY) != 0) {
+            Trace("regs->status = STATUS_RX_CB_EMPTY\n");
         }
         *buf++ = *byte_access;
         size -= 1;
@@ -116,6 +119,7 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
         for (WORD i = chunk_count - 1; i >= 0; i--)
         {
             while ((regs->status & STATUS_RX_HALF_FULL) == 0) {
+                Trace("regs->status = STATUS_RX_HALF_FULL\n");
             }
             *buf_longword++ = *longword_access;
             *buf_longword++ = *longword_access;
@@ -131,6 +135,7 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
     for (WORD i = (size >> 1) - 1; i >= 0; i--)
     {
         while ((regs->status & STATUS_RX_CB_FULL) == 0) {
+            Trace("regs->status = STATUS_RX_CB_FULL\n");
         }
         *buf_word++ = *word_access;
     }
@@ -139,13 +144,16 @@ void spi_read(__reg("a0") UBYTE *buf, __reg("d0") WORD size)
     {
         buf = (UBYTE *)buf_word;
         while ((regs->status & STATUS_RX_CB_EMPTY) != 0) {
+            Trace("regs->status = STATUS_RX_CB_EMPTY\n");
         }
         *buf++ = *byte_access;
     }
+    Trace("Exit spi_read\n");
 }
 
 void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
 {
+    Trace("spi_write() - size: %ld\n",size);
     volatile UWORD *word_access = (volatile UWORD *)&(regs->fifo);
     volatile UBYTE *byte_access = (volatile UBYTE *)word_access;
 
@@ -169,6 +177,7 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
         for (WORD i = chunk_count - 1; i >= 0; i--)
         {
             while ((regs->status & STATUS_TX_HALF_EMPTY) == 0) {
+                Trace("regs->status = STATUS_TX_HALF_EMPTY\n");
             }
             *longword_access = *buf_longword++;
             *longword_access = *buf_longword++;
@@ -184,6 +193,7 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
     for (WORD i = (size >> 1) - 1; i >= 0; i--)
     {
         while ((regs->status & STATUS_TX_CB_EMPTY) == 0) {
+            Trace("regs->status = STATUS_TX_CB_EMPTY\n");
         }
         *word_access = *buf_word++;
     }
@@ -192,12 +202,15 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
     {
         buf = (const UBYTE *)buf_word;
         while ((regs->status & STATUS_TX_CB_FULL) != 0) {
+            Trace("regs->status = STATUS_TX_CB_FULL\n");
         }
         *byte_access = *buf++;
     }
 
     while (regs->status & STATUS_SHIFTER_BUSY) {
+        Trace("regs->status = STATUS_TX_CB_FULL\n");
     }
+    Trace("Exit spi_write\n");
 }
 
 int spi_initialize(void (*change_isr)())

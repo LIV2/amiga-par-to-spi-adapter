@@ -25,6 +25,9 @@
 #include "sd.h"
 #include "timer.h"
 
+#include <clib/debug_protos.h>
+#include "debug.h"
+
 #define FUNCTION_TRACE
 #define INFO(...)
 #define ERROR(...)
@@ -67,7 +70,7 @@ static int sd_parse_csd(sd_card_info_t *ci, const uint32_t *bits)
 	sd_card_csd_t *csd = &ci->csd;
 	memset(csd, 0, sizeof(sd_card_csd_t));
 
-	TRACE("CSD: %08X %08X %08X %08X\n",
+	Trace("CSD: %08X %08X %08X %08X\n",
 			(unsigned int)bits[0],
 			(unsigned int)bits[1],
 			(unsigned int)bits[2],
@@ -101,7 +104,7 @@ static int sd_parse_csd(sd_card_info_t *ci, const uint32_t *bits)
 		//ci->capacity = (uint64_t)(csd->device_size + 1) << 19;
 		ci->total_sectors = (uint32_t)(csd->device_size + 1) << (19 - csd->read_block_len);
 	} else {
-		ERROR("Card type not supported for CSD decode\n");
+		Warn("Card type not supported for CSD decode\n");
 		return sdError_Unsupported;
 	}
 
@@ -120,14 +123,14 @@ static int sd_parse_csd(sd_card_info_t *ci, const uint32_t *bits)
 	csd->crc = (bits[3] >> 1) & 0x7f;
 
 	if (csd->read_block_len != csd->write_block_len) {
-		ERROR("Different read/write block sizes not supported\n");
+		Warn("Different read/write block sizes not supported\n");
 		return sdError_Unsupported;
 	}
 
 	ci->block_size = csd->read_block_len;
-	INFO("capacity %u MiB block size = %u bytes\n",
-			(unsigned int)(ci->capacity / 1024 / 1024),
-			1 << ci->block_size);
+	// INFO("capacity %u MiB block size = %u bytes\n",
+	// 		(unsigned int)(ci->capacity / 1024 / 1024),
+	// 		1 << ci->block_size);
 
 	/* FIXME: Check CRC */
 
@@ -140,7 +143,7 @@ static int sd_parse_cid(sd_card_info_t *ci, const uint32_t *bits)
 	sd_card_cid_t *cid = &ci->cid;
 	memset(cid, 0, sizeof(sd_card_cid_t));
 
-	TRACE("CID: %08X %08X %08X %08X\n",
+	Trace("CID: %08X %08X %08X %08X\n",
 			(unsigned int)bits[0],
 			(unsigned int)bits[1],
 			(unsigned int)bits[2],
@@ -160,7 +163,7 @@ static int sd_parse_cid(sd_card_info_t *ci, const uint32_t *bits)
 	cid->mfg_date = (bits[3] >> 8) & 0xfff;
 	cid->crc = (bits[3] >> 1) & 0x7f;
 
-	INFO("SD mfg %02X app '%c%c' product '%.5s' rev %02X sn %08X mfg %02u/%04u\n",
+	Trace("SD mfg %02X app '%c%c' product '%.5s' rev %02X sn %08X mfg %02u/%04u\n",
 			cid->manufacturer_id,
 			cid->app_id[0], cid->app_id[1],
 			cid->product_name,
@@ -201,7 +204,7 @@ static int sd_select(void)
 	}
 	spi_deselect();
 
-	ERROR("Timeout waiting for card ready\n");
+	Warn("Timeout waiting for card ready\n");
 	return sdError_Timeout;
 }
 
@@ -216,7 +219,7 @@ static int sd_read_block(uint8_t *buf, unsigned int size)
 		spi_read(&token, 1);
 	} while (token == 0xff && (int32_t)(timer_get_tick_count() - timeout) < 0);
 	if (token != 0xfe) {
-		ERROR("No data token received\n");
+		Warn("No data token received\n");
 		return sdError_Timeout;
 	}
 
@@ -233,7 +236,7 @@ static int sd_write_block(const uint8_t *buf, uint8_t token)
 	uint8_t resp;
 
 	if (sd_wait_ready() < 0) {
-		ERROR("Card not ready\n");
+		Warn("Card not ready\n");
 		return sdError_Timeout;
 	}
 
@@ -255,7 +258,7 @@ static int sd_write_block(const uint8_t *buf, uint8_t token)
 		/* Receive data response */
 		spi_read(&resp, 1);
 		if ((resp & 0x1f) != 0x05) {
-			ERROR("Bad response\n");
+			Warn("Bad response\n");
 			return sdError_BadResponse;
 		}
 	}
@@ -352,7 +355,7 @@ int sd_open(void)
 			uint32_t ocr = sd_get_r7_resp();
 
 			if (ocr == 0x000001aa) {
-				TRACE("SDv2 - R7 resp = 0x%08X\n", (unsigned int) ocr);
+				Trace("SDv2 - R7 resp = 0x%08X\n", (unsigned int) ocr);
 				ci->type = sdCardType_SD2_0;
 
 				/* Wait for card ready */
@@ -360,7 +363,7 @@ int sd_open(void)
 				while (sd_send_cmd(ACMD41, (1ul << 30)) > 0) {
 					if ((int32_t)(timer_get_tick_count() - timeout) >= 0) {
 						/* Init timed out - invalidate card */
-						ERROR("Init timed out\n");
+						Warn("Init timed out\n");
 						ci->type = sdCardType_None;
 					}
 				}
@@ -371,11 +374,11 @@ int sd_open(void)
 						ocr = sd_get_r7_resp();
 						if (ocr & (1ul << 30)) {
 							/* Card is high capacity */
-							TRACE("SDHC\n");
+							Trace("SDHC\n");
 							ci->type = sdCardType_SDHC;
 						}
 					} else {
-						ERROR("Failed to read OCR\n");
+						Warn("Failed to read OCR\n");
 						ci->type = sdCardType_None;
 					}
 				}
@@ -383,11 +386,11 @@ int sd_open(void)
 		} else {
 			/* Not SDv2 */
 			if (sd_send_cmd(ACMD41, 0) <= 1) {
-				TRACE("SDv1\n");
+				Trace("SDv1\n");
 				ci->type = sdCardType_SD1_x;
 				cmd = ACMD41;
 			} else {
-				TRACE("MMCv3\n");
+				Trace("MMCv3\n");
 				ci->type = sdCardType_MMC;
 				cmd = CMD1;
 			}
@@ -397,7 +400,7 @@ int sd_open(void)
 			while (sd_send_cmd(cmd, 0) > 0) {
 				if ((int32_t)(timer_get_tick_count() - timeout) >= 0) {
 					/* Init timed out - invalidate card */
-					ERROR("Init timed out\n");
+					Warn("Init timed out\n");
 					ci->type = sdCardType_None;
 				}
 			}
@@ -405,7 +408,7 @@ int sd_open(void)
 			if (ci->type) {
 				/* Set block length */
 				if (sd_send_cmd(CMD16, SD_SECTOR_SIZE) > 0) {
-					ERROR("Failed to set block length\n");
+					Warn("Failed to set block length\n");
 					ci->type = sdCardType_None;
 				}
 			}
@@ -413,13 +416,13 @@ int sd_open(void)
 	}
 
 	if (ci->type) {
-		INFO("SD card ready (type %u)\n", ci->type);
+		Trace("SD card ready (type %u)\n", ci->type);
 
 		/* Read and decode card info */
 		if (sd_send_cmd(CMD10, 0) == 0) {
 			err = sd_read_block((uint8_t*)&resp, sizeof(resp));
 			if (err < 0) {
-				ERROR("Read CID failed\n");
+				Warn("Read CID failed\n");
 			}
 		} else {
 			err = sdError_BadResponse;
@@ -431,7 +434,7 @@ int sd_open(void)
 			if (sd_send_cmd(CMD9, 0) == 0) {
 				err = sd_read_block((uint8_t*)&resp, sizeof(resp));
 				if (err < 0) {
-					ERROR("Read CSD failed\n");
+					Warn("Read CSD failed\n");
 				}
 			} else {
 				err = sdError_BadResponse;
@@ -459,7 +462,7 @@ int sd_read(uint8_t *buf, uint32_t sector, uint32_t count)
 	int err = 0;
 
 	if (ci->type == sdCardType_None) {
-		ERROR("No card\n");
+		Warn("No card\n");
 		return sdError_NoCard;
 	}
 	if (ci->type != sdCardType_SDHC) {
@@ -505,7 +508,7 @@ int sd_write(const uint8_t *buf, uint32_t sector, uint32_t count)
 	int err = 0;
 
 	if (ci->type == sdCardType_None) {
-		ERROR("No card\n");
+		Warn("No card\n");
 		return sdError_NoCard;
 	}
 	if (ci->type != sdCardType_SDHC) {

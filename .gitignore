@@ -1,2 +1,4 @@
+.DS_Store
 .vscode
 rp2040/build
+.devcontainer/devcontainer.json

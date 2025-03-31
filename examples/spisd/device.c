@@ -20,11 +20,11 @@
 #include <devices/newstyle.h>
 #include <proto/exec.h>
 #include <proto/alib.h>
-
 #include "version.h"
 #include "sd.h"
 #include "spi.h"
 #include "mounter.h"
+#include "debug.h"
 
 #define TASK_STACK_SIZE 2048
 #define TASK_PRIORITY 10
@@ -78,6 +78,7 @@ static uint32_t device_get_geometry(struct IOStdReq *ior)
 
 static void handle_changed()
 {
+    Trace("handle_changed\n");
     // Wait to debounce the card detect switch.
     tr.tr_node.io_Command = TR_ADDREQUEST;
     tr.tr_time.tv_secs = 0;
@@ -110,6 +111,7 @@ static uint32_t offset_to_sd_sectors(uint32_t high_offset, uint32_t low_offset)
 
 static void process_request(struct IOStdReq *ior)
 {
+    Trace("process_request: %lx\n",ior->io_Command);
     if (!card_present)
         ior->io_Error = TDERR_DiskChanged;
     else if (!card_opened)
@@ -129,6 +131,7 @@ static void process_request(struct IOStdReq *ior)
         case TD_WRITE64:
         case NSCMD_TD_FORMAT64:
         case NSCMD_TD_WRITE64:
+            Trace("Write %lx actual %lx offset %lx length\n",ior->io_Actual, ior->io_Offset, ior->io_Length);
             if (sd_write((uint8_t *)ior->io_Data, offset_to_sd_sectors(ior->io_Actual, ior->io_Offset), ior->io_Length >> SD_SECTOR_SHIFT) == 0)
                 ior->io_Actual = ior->io_Length;
             else
@@ -139,6 +142,7 @@ static void process_request(struct IOStdReq *ior)
             ior->io_Actual = 0;
         case TD_READ64:
         case NSCMD_TD_READ64:
+            Trace("Read %lx actual %lx offset %lx length\n",ior->io_Actual, ior->io_Offset, ior->io_Length);
             if (sd_read((uint8_t *)ior->io_Data, offset_to_sd_sectors(ior->io_Actual, ior->io_Offset), ior->io_Length >> SD_SECTOR_SHIFT) == 0)
                 ior->io_Actual = ior->io_Length;
             else
@@ -146,7 +150,7 @@ static void process_request(struct IOStdReq *ior)
             break;
         }
     }
-
+    Trace("process_request return %lx\n",ior->io_Error);
     ReplyMsg(&ior->io_Message);
 }
 
@@ -173,6 +177,7 @@ static void init_iomp(struct Task *self) {
 
 static void task_run()
 {
+    Trace("Start task\n");
     struct Task *self = FindTask(0);
     struct Task *parent = (struct Task *)self->tc_UserData;
 
@@ -186,6 +191,7 @@ static void task_run()
     if (card_present && sd_open() == 0)
         card_opened = TRUE;
 
+    Trace("Task ready, signalling parent\n");
     Signal(parent,SIGF_SINGLE);
 
     while (1)
@@ -206,6 +212,7 @@ static void task_run()
                     handle_changed();
 
                 process_request(ior);
+                traceCommand(ior);
                 first = FALSE;
             }
         }
@@ -250,7 +257,7 @@ static void begin_io(__reg("a6") struct Library *dev, __reg("a1") struct IOStdRe
         return;
 
     ior->io_Error = 0;
-
+    Trace("begin_io: %lx\n",ior->io_Command);
     switch (ior->io_Command)
     {
     case CMD_RESET:
@@ -327,8 +334,10 @@ static void begin_io(__reg("a6") struct Library *dev, __reg("a1") struct IOStdRe
         ior->io_Error = IOERR_NOCMD;
     }
 
-    if (ior && !(ior->io_Flags & IOF_QUICK))
+    if (ior && !(ior->io_Flags & IOF_QUICK)) {
+        Trace("begin_io return: %ld\n",ior->io_Error);
         ReplyMsg(&ior->io_Message);
+    }
 }
 
 static ULONG abort_io(__reg("a6") struct Library *dev, __reg("a1") struct IORequest *ior)
@@ -350,18 +359,25 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
 
     Forbid();
 
-    if (OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)&tr, 0))
+    if (OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)&tr, 0)) {
+        Info("Failed to open timer.device\n");
         goto fail1;
-
+    }
+    Trace("Starting IO Task\n");
     task = CreateTask(device_name, TASK_PRIORITY, (char *)&task_run, TASK_STACK_SIZE);
-    if (!task)
+    if (!task) {
+        Info("Failed to create task\n")
         goto fail2;
+    }
 
     task->tc_UserData = (APTR)FindTask(0);
 
     int res = spi_initialize(&change_isr);
     if (res < 0)
+    {
+        Info("SPI Init failed.\n");
         goto fail3;
+    }
 
     card_present = res == 1;
 
@@ -369,6 +385,7 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
     Permit();
 
     Wait(SIGF_SINGLE); // Wait for task to be ready
+    Trace("IO Task started")
 
     return dev;
 
@@ -391,7 +408,7 @@ static BPTR expunge(__reg("a6") struct Library *dev)
         dev->lib_Flags |= LIBF_DELEXP;
         return 0;
     }
-
+    Trace("Expunging :(\n");
     // This could be improved on.
     // There is a risk that the task has an outstanding debounce timer,
     // and deleting the task at that point will probably cause a crash.
@@ -410,6 +427,7 @@ static BPTR expunge(__reg("a6") struct Library *dev)
 
 static void open(__reg("a6") struct Library *dev, __reg("a1") struct IORequest *ior, __reg("d0") ULONG unitnum, __reg("d1") ULONG flags)
 {
+    Trace("open()\n");
     ior->io_Error = IOERR_OPENFAIL;
     ior->io_Message.mn_Node.ln_Type = NT_REPLYMSG;
 
@@ -453,6 +471,7 @@ static ULONG device_vectors[] =
  */
 struct Library *init(__reg("a0") BPTR seglist) {
     struct ExecBase *SysBase = *(struct ExecBase **)4UL;
+    Trace("Init device.\n");
     struct Library *mydev = MakeLibrary((ULONG *)&device_vectors,
                                         NULL,
                                         (APTR)init_device,
@@ -460,14 +479,16 @@ struct Library *init(__reg("a0") BPTR seglist) {
                                         seglist);
 
     if (mydev) {
+        Trace("Add Device.\n")
         AddDevice((struct Device *)mydev);
+
         struct MountStruct ms = {
             .deviceName  = mydev->lib_Node.ln_Name,
             .creatorName = NULL,
             .numUnits    = 1,
             .SysBase     = SysBase,
         };
-
+        Trace("Calling mounter\n");
         MountDrive(&ms);
 
     }

@@ -25,7 +25,7 @@
 #include "sd.h"
 #include "spi.h"
 
-#define TASK_STACK_SIZE 2048
+#define TASK_STACK_SIZE 4096
 #define TASK_PRIORITY 10
 
 #define DEBOUNCE_TIMEOUT_US 100000
@@ -388,23 +388,23 @@ static BPTR expunge(__reg("a6") struct Library *dev)
     if (dev->lib_OpenCnt != 0)
     {
         dev->lib_Flags |= LIBF_DELEXP;
-        return 0;
     }
+    
+        return 0;
+    // // This could be improved on.
+    // // There is a risk that the task has an outstanding debounce timer,
+    // // and deleting the task at that point will probably cause a crash.
 
-    // This could be improved on.
-    // There is a risk that the task has an outstanding debounce timer,
-    // and deleting the task at that point will probably cause a crash.
+    // spi_shutdown();
 
-    spi_shutdown();
+    // DeleteTask(task);
 
-    DeleteTask(task);
+    // CloseDevice((struct IORequest *)&tr);
 
-    CloseDevice((struct IORequest *)&tr);
-
-    BPTR seg_list = saved_seg_list;
-    Remove(&dev->lib_Node);
-    FreeMem((char *)dev - dev->lib_NegSize, dev->lib_NegSize + dev->lib_PosSize);
-    return seg_list;
+    // BPTR seg_list = saved_seg_list;
+    // Remove(&dev->lib_Node);
+    // FreeMem((char *)dev - dev->lib_NegSize, dev->lib_NegSize + dev->lib_PosSize);
+    // return seg_list;
 }
 
 static void open(__reg("a6") struct Library *dev, __reg("a1") struct IORequest *ior, __reg("d0") ULONG unitnum, __reg("d1") ULONG flags)

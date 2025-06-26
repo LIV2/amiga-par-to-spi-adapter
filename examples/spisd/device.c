@@ -55,6 +55,8 @@ static volatile ULONG card_change_num;
 static struct Interrupt *remove_int;
 static struct IOStdReq *change_int;
 
+void mount(__reg("a6") struct ExecBase *SysBase, __reg("a1") struct ConfigDev *cd, __reg("a0") struct Library *device);
+
 static uint32_t device_get_geometry(struct IOStdReq *ior)
 {
     struct DriveGeometry *geom = (struct DriveGeometry*)ior->io_Data;
@@ -369,6 +371,7 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
 
     Wait(SIGF_SINGLE); // Wait for task to be ready
 
+    mount(SysBase,NULL,dev);
     return dev;
 
 fail3:
@@ -390,7 +393,7 @@ static BPTR expunge(__reg("a6") struct Library *dev)
         dev->lib_Flags |= LIBF_DELEXP;
     }
     
-        return 0;
+    return 0;
     // // This could be improved on.
     // // There is a risk that the task has an outstanding debounce timer,
     // // and deleting the task at that point will probably cause a crash.

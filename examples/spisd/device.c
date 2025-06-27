@@ -55,7 +55,7 @@ static volatile ULONG card_change_num;
 static struct Interrupt *remove_int;
 static struct IOStdReq *change_int;
 
-void mount(__reg("a6") struct ExecBase *SysBase, __reg("a1") struct ConfigDev *cd, __reg("a0") struct Library *device);
+void mount(__reg("a6") struct ExecBase *SysBase, __reg("a1") struct ConfigDev *cd, __reg("a0") char *deviceName);
 
 static uint32_t device_get_geometry(struct IOStdReq *ior)
 {
@@ -175,7 +175,9 @@ static void init_iomp(struct Task *self) {
 static void task_run()
 {
     struct Task *self = FindTask(0);
-    struct Task *parent = (struct Task *)self->tc_UserData;
+    volatile struct Task *parent = (struct Task *)self->tc_UserData;
+
+    Forbid();
 
     if ((AllocSignal(SIGB_CARD_CHANGE)) == -1) Alert(0xBADBEEF);
     if ((AllocSignal(SIGB_OP_REQUEST)) == -1) Alert(0xBADBEEF);
@@ -187,7 +189,9 @@ static void task_run()
     if (card_present && sd_open() == 0)
         card_opened = TRUE;
 
-    Signal(parent,SIGF_SINGLE);
+    Permit();
+
+    Signal((struct Task *)parent,SIGF_SINGLE);
 
     while (1)
     {
@@ -342,6 +346,8 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
     SysBase = *(struct ExecBase **)4;
     saved_seg_list = seg_list;
 
+    card_opened = FALSE;
+
     dev->lib_Node.ln_Type = NT_DEVICE;
     dev->lib_Node.ln_Name = device_name;
     dev->lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
@@ -370,8 +376,6 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
     Permit();
 
     Wait(SIGF_SINGLE); // Wait for task to be ready
-
-    mount(SysBase,NULL,dev);
     return dev;
 
 fail3:
@@ -446,10 +450,24 @@ static ULONG device_vectors[] =
     -1,
 };
 
-ULONG auto_init_tables[] =
-{
-    sizeof(struct Library),
-    (ULONG)device_vectors,
-    0,
-    (ULONG)init_device,
-};
+/**
+ * init
+ * 
+ * Make the Device, add it and then call mounter
+ * 
+ * Since Mounter uses OpenDevice() we cannot use RTF_AUTOINIT
+ */
+struct Library *init(__reg("a0") BPTR seglist) {
+    struct ExecBase *SysBase = *(struct ExecBase **)4UL;
+    struct Library *mydev = MakeLibrary((ULONG *)&device_vectors,
+                                        NULL,
+                                        (APTR)init_device,
+                                        sizeof(struct Library),
+                                        seglist);
+
+    if (mydev) {
+        AddDevice((struct Device *)mydev);
+        mount(SysBase,NULL,mydev->lib_Node.ln_Name);
+    }
+    return mydev;
+}

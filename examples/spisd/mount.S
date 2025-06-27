@@ -20,9 +20,8 @@
 
 ; Frame pointer vars
 MB_CD           EQU -4                      ; ConfigDev
-MB_DEVICE       EQU MB_CD-4                 ; Device pointer
-MB_DEVNAME      EQU MB_DEVICE-4
-MB_IOREQ        EQU MB_DEVNAME-IOSTD_SIZE   ; IORequest structure (48 bytes)
+MB_DEVICE       EQU MB_CD-4                 ; Device Name
+MB_IOREQ        EQU MB_DEVICE-IOSTD_SIZE    ; IORequest structure (48 bytes)
 MB_MP           EQU MB_IOREQ-MP_SIZE        ; MsgPort structure (34 bytes)
 MB_BLOCKSHIFT   EQU MB_MP-2
 MB_BLOCKSIZE    EQU MB_BLOCKSHIFT-4         ; Blocksize
@@ -60,7 +59,7 @@ MB_SIZE         EQU -(MB_FSRES)             ; Total frame size
 ; The function handles both Kickstart 1.3 and 2.x+ mounting protocols.
 ;
 ; INPUTS:
-;   A0.L - Device base
+;   A0.L - Device name (null-terminated string, e.g., "scsi.device")
 ;   A1.L - ConfigDev structure pointer (from expansion board, NULL to create fake)
 ;   A6.L - Pointer to exec.library base
 ;
@@ -70,11 +69,21 @@ MB_SIZE         EQU -(MB_FSRES)             ; Total frame size
 ; REGISTER USAGE DURING EXECUTION:
 ;   D2.L - Current unit number being processed
 ;   D3.L - Return code accumulator
-;   A2.L - Device base pointer
+;   A2.L - Device name string pointer
 ;   A3.L - ConfigDev structure pointer
 ;   A4.L - ExpansionBase pointer (when expansion.library is open)
 ;   A5.L - Frame pointer for local variable access
 ;   A6.L - SysBase (exec.library base)
+;
+; STACK FRAME LAYOUT:
+;   MB_CD(-4):          ConfigDev pointer
+;   MB_DEVICE(-8):      Device name pointer
+;   MB_IOREQ(-56):      IOStdReq structure for device I/O
+;   MB_MP(-90):         MsgPort structure for async I/O
+;   MB_BLOCKSHIFT(-92): Block size shift value for address calculations
+;   MB_BLOCKSIZE(-96):  Device block size in bytes
+;   MB_FSHB(-100):      First filesystem header block pointer
+;   MB_FSRES(-104):     FileSystem.resource pointer
 ;******************************************************************************
 _mount:         movem.l d2-d7/a2-a6,-(sp)
                 move.l  a0,a2
@@ -89,14 +98,13 @@ _mount:         movem.l d2-d7/a2-a6,-(sp)
 .zero           clr.l   -(a0)
                 dbra    d0,.zero
 
-                move.l  a2,MB_DEVICE(a5)                    ; Save Device pointer
-                move.l  LN_NAME(a2),MB_DEVNAME(a5)
+                move.l  a2,MB_DEVICE(a5)                    ; Save Device name
 
                 ; Initialize MsgPort
                 lea.l   MB_MP(a5),a0
                 bsr.w   InitMP
                 tst.b   d0
-                bmi.w   .end
+                bmi.s   .end
 
                 ; Init IOReq
                 lea.l   MB_IOREQ(a5),a0
@@ -114,25 +122,19 @@ _mount:         movem.l d2-d7/a2-a6,-(sp)
                 move.l  a3,d0                               ; Was a configDev provided?
                 beq     .noconfigdev
                 move.l  a3,MB_CD(a5)
-                bra.s   .start
+                bra     .start
 
 .noconfigdev:   bsr     FakeConfigDev                       ; No configDev, create a fake one
                 move.l  a1,MB_CD(a5)
 
 .start:         moveq   #-1,d2                              ; Start scanning units
 .unitloop:      add.l   #1,d2                               ; Start at unit 0
-
                 ; Open the device
+                move.l  a2,a0                               ; Device name
                 move.l  d2,d0                               ; Unit
                 lea.l   MB_IOREQ(a5),a1                     ; IOStdReq
-                move.l  MB_DEVICE(a5),IO_DEVICE(a1)         ; Populate IO_DEVICE (required when calling open directly)
                 clr.l   d1                                  ; Flags
-                exg     a2,a6                               ; Device <==> SysBase
-                jsr     LIB_OPEN(a6)                        ; Call the devices Open() vector directly
-                exg     a2,a6                               ; SysBase <==> Device
-
-                lea.l   MB_IOREQ(a5),a0
-                move.b  IO_ERROR(a0),d0                     ; Check IO Error
+                jsr     _LVOOpenDevice(a6)
                 tst.b   d0
                 beq.s   .OpenOK
                 cmp.b   #TDERR_BadUnitNum,d0                ; No unit here but there are others
@@ -564,7 +566,7 @@ ProcessPart:    movem.l a2-a3/d2-d5,-(sp)
                 move.b  (a1)+,d0                            ; Convert to C str
                 move.b  #0,0(a1,d0.w)                       ; Null Terminate
                 move.l  a1,(a0)                             ; Set drive name in param packet
-                move.l  MB_DEVNAME(a5),4(a0)                 ; Set Device name
+                move.l  MB_DEVICE(a5),4(a0)                 ; Set Device name
                 move.l  d5,8(a0)                            ; Set the unit number
                 move.l  #0,12(a0)                           ; Set flags
 
@@ -995,7 +997,7 @@ LoadFS:         movem.l d2/a2/a4,-(sp)
                 moveq   #11,d1                              ; Copy relevant fields
 .copy:          move.l  (a0)+,(a4)+
                 dbf     d1,.copy
-                move.l  MB_DEVNAME(a5),LN_NAME(a1)
+                move.l  MB_DEVICE(a5),LN_NAME(a1)
                 move.l  d2,fse_SegList(a1)                  ; Patch in the new seglist
                 lea.l   fsr_FileSysEntries(a2),a0
                 jsr     _LVOAddHead(a6)                     ; Add it to the head of FileSysEntries

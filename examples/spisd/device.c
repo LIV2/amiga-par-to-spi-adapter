@@ -20,7 +20,7 @@
 #include <devices/newstyle.h>
 #include <proto/exec.h>
 #include <proto/alib.h>
-
+#include <string.h>
 #include "version.h"
 #include "sd.h"
 #include "spi.h"
@@ -56,6 +56,43 @@ static struct Interrupt *remove_int;
 static struct IOStdReq *change_int;
 
 void mount(__reg("a6") struct ExecBase *SysBase, __reg("a1") struct ConfigDev *cd, __reg("a0") char *deviceName);
+
+/**
+ * get_unique_dev_name
+ * 
+ * Check the exec device list for a duplicate of our device name
+ * If one is found attempt to make a unique device name by adding a prefix
+ * i.e 2nd.spisd.device, 3rd.spisd.device and so on.
+ */
+char *get_unique_dev_name() {
+    ULONG prefixes[] = {
+        0x206E642E, // ' nd.'
+        0x2072642E, // ' rd.'
+        0x2074682E  // ' th.'
+    };
+
+    char *name = device_name;
+
+    for (int i=0; i<8; i++) {
+        if (FindName(&SysBase->DeviceList,name)) {
+            if (i == 0) {
+                name = AllocMem(strlen(device_name)+5,MEMF_ANY|MEMF_CLEAR);
+                if (!name) return NULL;
+                strcpy(name+4,device_name);
+            }
+            if (i > 1) {
+                ((ULONG *)name)[0] = prefixes[2];
+            } else {
+                ((ULONG *)name)[0] = prefixes[i];
+            }
+            name[0] = '2' + i;
+        } else {
+            return name;
+        }
+    }
+
+    return NULL;
+}
 
 static uint32_t device_get_geometry(struct IOStdReq *ior)
 {
@@ -348,8 +385,12 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
 
     card_opened = FALSE;
 
+    char *unique_devname = get_unique_dev_name();
+
+    if (!unique_devname) return NULL;
+
     dev->lib_Node.ln_Type = NT_DEVICE;
-    dev->lib_Node.ln_Name = device_name;
+    dev->lib_Node.ln_Name = unique_devname;
     dev->lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
     dev->lib_Version = VERSION;
     dev->lib_Revision = REVISION;
@@ -360,7 +401,7 @@ static struct Library *init_device(__reg("a6") struct ExecBase *sys_base, __reg(
     if (OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)&tr, 0))
         goto fail1;
 
-    task = CreateTask(device_name, TASK_PRIORITY, (char *)&task_run, TASK_STACK_SIZE);
+    task = CreateTask(unique_devname, TASK_PRIORITY, (char *)&task_run, TASK_STACK_SIZE);
     if (!task)
         goto fail2;
 

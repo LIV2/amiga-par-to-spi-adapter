@@ -10,8 +10,12 @@
 #include <hardware/intbits.h>
 
 #include <proto/exec.h>
+#include <proto/expansion.h>
 
 #include "spi.h"
+
+#define MANUF_ID 5194   // OAHR
+#define PROD_ID  11     // SF2000 SD
 
 static const char spi_lib_name[] = "spi-lib-sf2000";
 
@@ -202,10 +206,17 @@ void spi_write(__reg("a0") const UBYTE *buf, __reg("d0") WORD size)
 
 int spi_initialize(void (*change_isr)())
 {
-    // TODO: This address should not be hardcoded,
-    // and should be read from autoconfig/expansion.library.
-    regs = (struct SF2000SDRegisters *)0xEE0000;
 
+    struct ExpansionBase *ExpansionBase = (struct ExpansionBase *)OpenLibrary("expansion.library",0);
+    struct ConfigDev *cd = NULL;
+
+    cd = FindConfigDev(NULL,MANUF_ID,PROD_ID);
+    CloseLibrary((struct Library *)ExpansionBase);
+    if (!cd) return -1;
+
+    regs = (struct SF2000SDRegisters *)cd->cd_BoardAddr;
+
+    // Important! The ROM is overlaid until the first write to the registers
     regs->clock_divisor = CLK_DIV_400K;
 
     regs->int_ena = 0;

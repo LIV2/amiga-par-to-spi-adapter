@@ -1,4 +1,4 @@
-PROJECT=spisd
+PROJECT=sfsd
 INCLUDE=$$NDK32/Include_I
 AS=vasmm68k_mot
 ASFLAGS=-Fhunk -I$(INCLUDE) -quiet -align -DROM
@@ -28,7 +28,7 @@ $(OBJDIR)/bootnibbles: $(OBJDIR)/bootldr mungerom.py
 	@mkdir -p $(OBJDIR)
 	./mungerom.py
 
-$(OBJDIR)/assets.o: assets.S $(OBJDIR)/bootnibbles ../spisd.device
+$(OBJDIR)/assets.o: assets.S $(OBJDIR)/bootnibbles ../sfsd.device
 
 $(PROJECT).rom: $(OBJDIR)/bootnibbles $(OBJDIR)/assets.o
 	$(LINKER) $(LINKFLAGS) -Trom.ld -o $@ $(OBJDIR)/assets.o

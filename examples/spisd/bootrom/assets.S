@@ -1,2 +1,2 @@
     incbin "obj/bootnibbles"
-    incbin "../spisd.device"
+    incbin "../sfsd.device"

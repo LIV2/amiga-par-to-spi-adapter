@@ -18,12 +18,14 @@
 #include <devices/timer.h>
 #include <devices/trackdisk.h>
 #include <devices/newstyle.h>
+#include <devices/scsidisk.h>
 #include <proto/exec.h>
 #include <proto/alib.h>
 #include <string.h>
 #include "version.h"
 #include "sd.h"
 #include "spi.h"
+#include "scsidirect.h"
 
 #define TASK_STACK_SIZE 4096
 #define TASK_PRIORITY 10
@@ -107,7 +109,7 @@ static uint32_t device_get_geometry(struct IOStdReq *ior)
     geom->dg_Cylinders = geom->dg_TotalSectors / 4096;
     geom->dg_CylSectors = 4096;
     geom->dg_Heads = 16;
-    geom->dg_TrackSectors = geom->dg_Cylinders / 16;
+    geom->dg_TrackSectors = geom->dg_CylSectors / geom->dg_Heads;
     geom->dg_BufMemType = MEMF_PUBLIC;
     geom->dg_DeviceType = DG_DIRECT_ACCESS;
     geom->dg_Flags = DGF_REMOVABLE;
@@ -156,6 +158,9 @@ static void process_request(struct IOStdReq *ior)
     {
         switch (ior->io_Command)
         {
+        case HD_SCSICMD:
+            process_scsi_direct(ior);
+            break;
         case TD_GETGEOMETRY:
             ior->io_Error = device_get_geometry(ior);
             break;
@@ -283,6 +288,7 @@ static const UWORD supported_commands[] =
     NSCMD_TD_READ64,
     NSCMD_TD_WRITE64,
     NSCMD_TD_FORMAT64,
+    HD_SCSICMD,
     0
 };
 
@@ -360,6 +366,7 @@ static void begin_io(__reg("a6") struct Library *dev, __reg("a1") struct IOStdRe
     case NSCMD_TD_READ64:
     case NSCMD_TD_WRITE64:
     case NSCMD_TD_FORMAT64:
+    case HD_SCSICMD:
         PutMsg(&mp, (struct Message *)&ior->io_Message);
         ior->io_Flags &= ~IOF_QUICK;
         ior = NULL;

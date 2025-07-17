@@ -68,7 +68,7 @@ static uint8_t handle_inquiry(struct SCSICmd *cmd, struct IOStdReq *ior)
         return TDERR_DiskChanged;
     }
     
-    if (cmd->scsi_Length < sizeof(struct SCSI_Inquiry)) {
+    if (cmd->scsi_Length < 36) {
         return IOERR_BADLENGTH;
     }
     
@@ -180,6 +180,10 @@ void process_scsi_direct(struct IOStdReq *ior)
     cmd->scsi_Status = 0;
 
     switch (cdb[0]) {
+        case SCSI_CMD_TEST_UNIT_READY:
+            cmd->scsi_Actual = 0;
+            ior->io_Error = 0;
+            break;
         case SCSI_CMD_READ_6:
         {
             struct SCSI_CDB_6 *cdb6 = (struct SCSI_CDB_6 *)cdb;

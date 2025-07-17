@@ -1,6 +1,7 @@
 #ifndef SCSIDIRECT_H_
 #define SCSIDIRECT_H_
 
+#define SCSI_CMD_TEST_UNIT_READY  0x00
 #define SCSI_CMD_READ_6           0x08
 #define SCSI_CMD_WRITE_6          0x0A
 #define SCSI_CMD_READ_10          0x28

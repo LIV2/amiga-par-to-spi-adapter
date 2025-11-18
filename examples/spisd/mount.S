@@ -887,7 +887,7 @@ OpenFSR:        movem.l a2,-(sp)
                 bne.s   .done
 
                 ;; If FileSystem.resource was not found create it
-                move.l  #FileSysResource_SIZEOF+FsrLen,d0   ; Allocate with room for name string
+                move.l  #FileSysResource_SIZEOF+20,d0       ; Allocate with room for name string
                 move.l  #MEMF_PUBLIC+MEMF_CLEAR,d1
                 jsr     _LVOAllocMem(a6)
                 tst.l   d0
@@ -1252,4 +1252,3 @@ Expansion:
                 DC.B "expansion.library",0
 FileSysRes:
                 DC.B "FileSystem.resource",0
-FsrLen: *-FileSysRes

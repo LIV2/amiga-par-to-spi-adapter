@@ -4,6 +4,7 @@
 ;
     include exec/devices.i
     include exec/io.i
+    include exec/errors.i
     include exec/nodes.i
     include exec/memory.i
     include exec/ports.i
@@ -89,7 +90,7 @@ _mount:         movem.l d2-d7/a2-a6,-(sp)
                 move.l  a0,a2
                 move.l  a1,a3
                 move.l  #0,a4                               ; Clear ExpansionBase
-                moveq   #-3,d3                              ; Default return code -1
+                moveq   #-1,d3                              ; Default return code -1
                 move.l  4,a6                                ; SysBase
 
                 link.w  a5,#-MB_SIZE
@@ -282,7 +283,14 @@ GetSectorSize:  lea.l   MB_IOREQ(a5),a1
                 move.l  dg_SectorSize(sp),d0                
 .exit:          add.l   #dg_SIZEOF,sp
                 rts
-.error:         moveq   #0,d0
+.error:         cmp.b   #IOERR_NOCMD,d0
+                beq.s   .nocmd
+                moveq   #0,d0
+                bra     .exit
+; If the device doesn't support TD_GETGEOMETRY just assume a sector size of 512 bytes
+.nocmd:         move.l  #512,d0
+                move.l  d0,MB_BLOCKSIZE(a5)
+                move.w  #9,MB_BLOCKSHIFT(a5)
                 bra     .exit
 
 ;******************************************************************************
@@ -318,6 +326,7 @@ InitMP:
 
                 sub.l   a1,a1                              ; Set mp_Sigtask to our task
                 jsr     _LVOFindTask(a6)
+                tst.l   d0
                 beq.s   .fail
                 move.l  d0,MP_SIGTASK(a2)
 
@@ -353,7 +362,7 @@ InitIO:         move.b  #NT_MESSAGE,LN_TYPE(a0)
                 rts
 
 ;******************************************************************************
-; GetBlock - Read and validate a disk block
+; GetBlock - Read and validate a disk block with variable block size support
 ;
 ; Performs low-level disk block reading with optional validation and
 ; support for variable block sizes. This function handles the conversion
@@ -680,7 +689,7 @@ MountPart:      move.l  pb_Environment+de_DosType(a3),d0
                 move.l  d0,a0                               ; BootNode into A0
                 move.l  d4,bn_DeviceNode(a0)                ; DosNode
                 move.b  #NT_BOOTNODE,LN_TYPE(a0)
-                move.b  pb_Environment+de_BootPri(a3),LN_PRI(a0) ; Boot priority
+                move.b  pb_Environment+de_BootPri+3(a3),LN_PRI(a0) ; Boot priority
                 move.l  MB_CD(a5),LN_NAME(a0)                    ; Link in the configdev
                 jsr     _LVOForbid(a6)
                 move.l  a0,a1                               ; Add to ExpansionBase mountlist
@@ -847,9 +856,9 @@ CompareBstr:    movem.l d2-d3/a0-a1,-(sp)
 ; OUTPUTS:
 ;   D0.B - Uppercase character
 ;******************************************************************************
-ToUpper:        cmp.b   'a',d0
+ToUpper:        cmp.b   #'a',d0
                 blo.s   .done
-                cmp.b   'z',d0
+                cmp.b   #'z',d0
                 bhi.s   .done
                 sub.b   #'a'-'A',d0         ; Make Uppercase
 .done:          rts
@@ -891,7 +900,7 @@ OpenFSR:        movem.l a2,-(sp)
                 move.l  #MEMF_PUBLIC+MEMF_CLEAR,d1
                 jsr     _LVOAllocMem(a6)
                 tst.l   d0
-                beq.w   .err
+                beq.w   .done
                 move.l  d0,a1                               ; FileSystem.resource into a1
                 move.b  #NT_RESOURCE,LN_TYPE(a1)
                 lea.l   fsr_FileSysEntries(a1),a2           ; Init FileSysEntries list
@@ -909,8 +918,6 @@ OpenFSR:        movem.l a2,-(sp)
 
 .done:          movem.l (sp)+,a2
                 rts
-.err:           moveq.l #-1,d0
-                bra.s   .done
 
 ;******************************************************************************
 ; FindFSE - Find a filesystem entry by DOS type
@@ -1061,18 +1068,18 @@ FindFS:         movem.l d2-d5/a2-a4,-(sp)
 .findfshb:
                 ;; Now check in the RDB
                 moveq   #-1,d5
-                cmp.l   #$FFFF,MB_FSHB(a5)                  ; No FSHB Blocks?
-                beq     .err                                ; Then skip
+                cmp.l   #-1,MB_FSHB(a5)                     ; No FSHB Blocks?
+                beq     .skipfree                           ; Then skip
 
                 move.l  MB_BLOCKSIZE(a5),d0                             ; Allocate FileSysHeaderBlock buffer
                 move.l  #MEMF_ANY+MEMF_CLEAR,d1
                 jsr     _LVOAllocMem(a6)
                 tst.l   d0
-                beq     .err
+                beq     .skipfree
                 move.l  d0,a3                               ; Buffer in a3
                 move.l  MB_FSHB(a5),d0                      ; Start at the first FSHB
 
-.fshbloop:      cmp.l   #$FFFF,d0                           ; End of list?
+.fshbloop:      cmp.l   #-1,d0                              ; End of list?
                 beq.s   .notfoundfshb                       ; Not found
                 lea.l   MB_IOREQ(a5),a1
                 move.l  #'FSHD',d1                          ; Block type
@@ -1105,8 +1112,6 @@ FindFS:         movem.l d2-d5/a2-a4,-(sp)
                 move.l  d3,d0
 .done:          movem.l (sp)+,d2-d5/a2-a4
                 rts
-.err            moveq   #0,d0
-                bra.s   .done
 
 ;******************************************************************************
 ; LoadLseg - Load seglist from LSEG blocks with enhanced read handle
@@ -1160,6 +1165,7 @@ LoadLseg        movem.l d2/a2,-(sp)
                 clr.l   RH_BYTES(a2)            ; 
                 clr.l   RH_INDEX(a2)
                 move.l  d2,RH_SECTOR(a2)        ; First LSEG sector
+                moveq   #0,d2                   ; Make sure this is cleared!
 
                 ;; Read handle ready, call into loadseg here
                 lea.l   LSGetLong(pc),a0

@@ -40,6 +40,12 @@
 ;   OUTPUTS:
 ;     D0.L - Next 32-bit value from input stream
 ;
+;   CALLING CONVENTION:
+;     - Function called via JSR (A1)
+;     - Must preserve all registers except D0/D1/A0/A1
+;     - Handle endianness conversion if required
+;     - Manage buffering, error handling, and stream positioning
+;
 ; READ HANDLE STRUCTURE:
 ;   Completely opaque to relocate.S - caller defines contents.
 ;   Typical implementations include:
@@ -62,7 +68,7 @@
 ;
 ;   Allocated Block Layout:
 ;   +---------------------------------------+
-;   | +0: Hunk size (longwords)             | <- AllocMem returns this address
+;   | +0: Hunk size (bytes)                 | <- AllocMem returns this address
 ;   | +4: BPTR to next segment              |
 ;   | +8: Start of hunk data                | <- Stored in hunk list array
 ;   |     (code/data gets loaded here)      |
@@ -93,11 +99,25 @@
 ;
 ;   What caller sees at returned BPTR address:
 ;   +---------------------------------------+
-;   | -4: Segment size (longwords)          | <- UnLoadSeg reads this
+;   | -4: Segment size (bytes)              | <- UnLoadSeg reads this
 ;   |  0: BPTR to next segment              | <- BPTR points here
 ;   | +4: Relocated code/data starts here   | <- Execution entry point
 ;   |     ...                               |
 ;   +---------------------------------------+
+;
+; This format is fully compatible with:
+; * DOS UnLoadSeg() for memory cleanup
+; * DOS Execute() for program execution
+; * Manual JSR 4(segment_absolute_addr) for direct calls
+;
+; EXECUTION:
+;   First segment typically contains program entry point.
+;   DOS can execute via: Execute(seglist, input, output)
+;   Or manually: JSR 4(seglist_absolute_address)
+;
+; MEMORY OWNERSHIP:
+;   Caller responsible for freeing segment list when no longer needed.
+;   Use DOS UnLoadSeg() or manual FreeMem() of each segment.
 ;
 ;******************************************************************************
 
@@ -153,10 +173,10 @@ F_WCACHE = 1
 ;   - HUNK_SYMBOL: Symbol table entries (skipped)
 ;   - HUNK_END: End of hunk marker
 ;******************************************************************************
-_loadseg:       movem.l D2-D7/A2-A5,-(SP)
+_loadseg:      movem.l D2-D7/A2-A5,-(SP)
                 link.w  a5,#FP_END
                 move.l  #0,HUNK_LIST(a5)
-                move.l  #0,WORD_CACHE(a5)
+                move.w  #0,WORD_CACHE(a5)
                 move.l  a0,READ_FUNC(a5)
                 move.w  #0,FLAGS(a5)
                 move.l  a2,a4                   // Read Handle
@@ -171,7 +191,7 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
                 bsr     getLong
                 move.l  D0,NUM_HUNKS(A5)
                 addi.l  #1,D0
-                lsl     #2,D0                   // Allocate Hunk List
+                lsl.l   #2,D0                   // Allocate Hunk List
                 move.l  #MEMF_ANY!MEMF_CLEAR,D1
                 jsr     _LVOAllocMem(A6)
                 tst.l   D0
@@ -185,9 +205,9 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
 ; Allocate memory for all Hunks
                 moveq.l #0,D5
 .allocate:      bsr     getLong
-                move.l  D0,-(SP)                // Save for later
                 lsl.l   #2,D0
                 add.l   #8,D0                   // Add space for SegList
+                move.l  D0,-(SP)                // Save for later
                 move.l  #MEMF_ANY!MEMF_CLEAR,D1
                 jsr     _LVOAllocMem(A6)
                 tst.l   D0
@@ -197,7 +217,7 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
                 move.l  D5,D1                   // Hunk number
                 lsl.l   #2,D1                   // To HUNK_LIST index
                 add.l   #8,D0                   // Skip Seglist Header
-                move.l  D0,(A2,D1)              // Store Hunk data location
+                move.l  D0,(A2,D1.L)            // Store Hunk data location
                 add.l   #1,D5
                 cmp.l   LAST_HUNK(A5),D5
                 ble     .allocate
@@ -206,10 +226,12 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
                 moveq.l #0,D5
 .linksegs:      move.l  D5,D0                   // Hunk number to HUNK_LIST INDEX
                 lsl.l   #2,D0
-                move.l  (A2,D0),A0
-                move.l  4(A2,D0),D0             // Get successor Address
+                move.l  (A2,D0.L),A0
+                move.l  4(A2,D0.L),D0           // Get successor Address
+                beq.s   .store
                 lsr.l   #2,D0                   // Convert to BPTR
-                move.l  D0,-4(A0)               // Store in seglist
+                sub.l   #1,D0
+.store:         move.l  D0,-4(A0)               // Store in seglist
                 add.l   #1,D5
                 cmp.l   NUM_HUNKS(A5),D5
 
@@ -218,7 +240,7 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
                 moveq.l #0,D5
 .hunkloop:      move.l  D5,D0
                 lsl.l   #2,D0
-                move.l  (A2,D0),A3              // Load Hunk address
+                move.l  (A2,D0.L),A3            // Load Hunk address
                 bsr     getLong
                 cmp.l   #HUNK_CODE,D0
                 beq     .h_code
@@ -314,8 +336,19 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
                 beq     .done
                 addi.l  #1,D5
                 bra     .hunkloop
-                
-.error:         moveq.l #-1,D7
+
+.error:         moveq   #-1,D7
+                move.l  HUNK_LIST(A5),D0
+                beq.s  .nohunklist
+                move.l  D0,A3
+
+.freehunks:     move.l  (A3)+,D0            // Free the hunks we allocated by walking the HUNK_LIST
+                beq.s   .done
+                sub.l   #8,D0
+                move.l  D0,A1
+                move.l  (A1),D0
+                jsr     _LVOFreeMem(a6)
+                bra.s   .freehunks
 
 .done:          move.l  HUNK_LIST(A5),D0
                 tst.l   D0
@@ -323,12 +356,13 @@ _loadseg:       movem.l D2-D7/A2-A5,-(SP)
                 move.l  D0,A1
                 move.l  (A1),D2             // Get address of 1st hunk
                 move.l  NUM_HUNKS(A5),D0
+                addq.l  #1,D0               // Include the sentinel entry
                 lsl.l   #2,D0
                 jsr     _LVOFreeMem(A6)
                 move.l  #0,NUM_HUNKS(A5)
 .nohunklist     tst.l   D7
                 beq     .ok
-                moveq.l #0,D2
+                moveq.l #0,D0
                 bra.s   .exit
 .ok:            move.l  D2,D0
                 lsr.l   #2,D0

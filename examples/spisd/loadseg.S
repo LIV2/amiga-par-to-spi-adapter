@@ -1,6 +1,6 @@
 ;
 ; Copyright (C) 2025 Matthew Harlum <matt@harlum.net>
-; This code is licensed under the GNU General Public License version 2 only.
+; This code is licensed under the GNU General Public License version 2 or newer
 ;
     include lvo/exec_lib.i
     include exec/io.i

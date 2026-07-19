@@ -264,6 +264,8 @@ _loadseg:      movem.l D2-D7/A2-A5,-(SP)
 .h_data:
 .h_code:
                 bsr     getLong            // Longword count
+                tst.l   D0
+                beq     .hunkloop
                 move.l  D0,D2
                 subi.l  #1,D2
 .copyloop:      bsr     getLong

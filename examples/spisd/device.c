@@ -26,6 +26,8 @@
 #include "sd.h"
 #include "spi.h"
 #include "scsidirect.h"
+#include "mounter.h"
+#include <stdbool.h>
 
 #define TASK_STACK_SIZE 4096
 #define TASK_PRIORITY 10
@@ -56,8 +58,6 @@ static volatile ULONG card_change_num;
 
 static struct Interrupt *remove_int;
 static struct IOStdReq *change_int;
-
-void mount(__reg("a6") struct ExecBase *SysBase, __reg("a1") struct ConfigDev *cd, __reg("a0") char *deviceName);
 
 /**
  * get_unique_dev_name
@@ -515,7 +515,18 @@ struct Library *init(__reg("a0") BPTR seglist) {
 
     if (mydev) {
         AddDevice((struct Device *)mydev);
-        mount(SysBase,NULL,mydev->lib_Node.ln_Name);
+        struct MountStruct ms = {
+           .deviceName   = mydev->lib_Node.ln_Name,
+           .unitNum      = 0,
+           .creatorName = NULL,
+           .configDev   = NULL,
+           .SysBase     = SysBase,
+           .luns        = false,
+           .slowSpinup  = false,
+           .ignoreLast  = true,
+           .hostId      = 255
+        };
+        MountDrive(&ms);
     }
     return mydev;
 }

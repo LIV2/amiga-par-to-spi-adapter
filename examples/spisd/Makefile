@@ -1,7 +1,7 @@
 PROJECT=spisd
 INCLUDE=$$NDK32/Include_H
 CC=vc
-CFLAGS=+aos68k -I$(INCLUDE) -O2 -nostdlib -lamiga -lvc
+CFLAGS=+aos68k -I$(INCLUDE) -I./mounter -O2 -nostdlib -lamiga -lvc -DNO_CONFIGDEV=1
 OBJDIR=obj
 FLAGS = -rmcfg-as -as="vasmm68k_mot -I$$NDK32/Include_I -quiet -Fhunk -nowarn=62 %s -o %s"
 
@@ -10,7 +10,7 @@ FLAGS = -rmcfg-as -as="vasmm68k_mot -I$$NDK32/Include_I -quiet -Fhunk -nowarn=62
 .PHONY: all clean both
 
 # Common sources
-SRCS = romtag.c version.c device.c sd.c scsidirect.c timer.c loadseg.S mount.S
+SRCS = romtag.c version.c device.c sd.c scsidirect.c timer.c mounter/mounter.c mounter/bootblock.S
 
 ALL_SRCS = $(SRCS) $(SPI_SRCS)
 

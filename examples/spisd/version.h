@@ -8,8 +8,8 @@
 #endif
 
 #define VERSION 2
-#define REVISION 2
-#define DATE "5.3.2023"
+#define REVISION 4
+#define DATE "10.9.2026"
 
 extern char device_name[];
 extern char id_string[];
